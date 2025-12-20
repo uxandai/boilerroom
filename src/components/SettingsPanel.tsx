@@ -4,7 +4,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Save, Eye, EyeOff, FolderOpen, RefreshCw, AlertCircle, Check, Loader2, Monitor, Wifi, ArrowLeftRight } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Save, Eye, EyeOff, FolderOpen, RefreshCw, AlertCircle, Check, Loader2, Monitor, Wifi, ArrowLeftRight, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { saveApiKey, testSshConnection } from "@/lib/api";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -21,6 +30,10 @@ export function SettingsPanel() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connectionSuccess, setConnectionSuccess] = useState(false);
   const [sshpassWarning, setSshpassWarning] = useState<string | null>(null);
+  // Confirmation dialogs
+  const [showSlssteamInstalledDialog, setShowSlssteamInstalledDialog] = useState(false);
+  const [showSettingsSavedDialog, setShowSettingsSavedDialog] = useState(false);
+  const [settingsSavedMessage, setSettingsSavedMessage] = useState("");
   const [verifyStatus, setVerifyStatus] = useState<{
     is_readonly: boolean;
     slssteam_so_exists: boolean;
@@ -39,6 +52,8 @@ export function SettingsPanel() {
       await saveApiKey(localApiKey);
       setSettings({ apiKey: localApiKey });
       addLog("info", "API key saved successfully");
+      setSettingsSavedMessage("Morrenus API key saved successfully!");
+      setShowSettingsSavedDialog(true);
     } catch (error) {
       addLog("error", `Failed to save API key: ${error}`);
     } finally {
@@ -182,6 +197,7 @@ export function SettingsPanel() {
       const result = await installSlssteam(configToUse, settings.slssteamPath, rootPassword);
       addLog("info", result);
       addLog("info", "SLSsteam installed successfully! Restart Steam.");
+      setShowSlssteamInstalledDialog(true);
     } catch (error) {
       addLog("error", `SLSsteam installation failed: ${error}`);
     } finally {
@@ -466,6 +482,8 @@ export function SettingsPanel() {
                       steamGridDbApiKey: settings.steamGridDbApiKey,
                     });
                     addLog("info", "SteamGridDB API key saved");
+                    setSettingsSavedMessage("SteamGridDB API key saved successfully!");
+                    setShowSettingsSavedDialog(true);
                   } catch (e) {
                     addLog("error", `Save error: ${e}`);
                   }
@@ -531,6 +549,8 @@ export function SettingsPanel() {
                   steamGridDbApiKey: settings.steamGridDbApiKey,
                 });
                 addLog("info", "Tool settings saved");
+                setSettingsSavedMessage("Paths and tools saved successfully!");
+                setShowSettingsSavedDialog(true);
               } catch (e) {
                 addLog("error", `Failed to save tool settings: ${e}`);
               }
@@ -674,6 +694,52 @@ export function SettingsPanel() {
       <div className="text-sm text-muted-foreground text-center">
         <p>TonTonDeck v1.0.0</p>
       </div>
+
+      {/* SLSsteam Installed Success Dialog */}
+      <AlertDialog open={showSlssteamInstalledDialog} onOpenChange={setShowSlssteamInstalledDialog}>
+        <AlertDialogContent className="bg-[#1b2838] border-[#2a475e]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-white">
+              <CheckCircle2 className="w-6 h-6 text-green-500" />
+              SLSsteam Installed Successfully!
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              SLSsteam has been installed and configured. Please restart Steam for the changes to take effect.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => setShowSlssteamInstalledDialog(false)}
+              className="btn-steam"
+            >
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Settings Saved Dialog */}
+      <AlertDialog open={showSettingsSavedDialog} onOpenChange={setShowSettingsSavedDialog}>
+        <AlertDialogContent className="bg-[#1b2838] border-[#2a475e]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-white">
+              <CheckCircle2 className="w-6 h-6 text-green-500" />
+              Settings Saved
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              {settingsSavedMessage}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction
+              onClick={() => setShowSettingsSavedDialog(false)}
+              className="btn-steam"
+            >
+              OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

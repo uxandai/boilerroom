@@ -110,7 +110,31 @@ else
     exit 1
 fi
 
-# Step 6: Create desktop entry for TonTonDeck
+# Step 6: Extract icon from AppImage
+echo ""
+echo "🎨 Extracting application icon..."
+ICON_PATH="$ICON_DIR/tontondeck.png"
+
+# Try to extract icon from AppImage
+cd "$INSTALL_DIR"
+if "./$APPIMAGE_NAME" --appimage-extract "*.png" >/dev/null 2>&1; then
+    # Find the largest icon
+    EXTRACTED_ICON=$(find squashfs-root -name "*.png" -type f 2>/dev/null | head -1)
+    if [ -n "$EXTRACTED_ICON" ]; then
+        cp "$EXTRACTED_ICON" "$ICON_PATH"
+        echo "   ✅ Icon extracted"
+    fi
+    rm -rf squashfs-root
+fi
+cd "$SCRIPT_DIR"
+
+# Fallback if extraction failed
+if [ ! -f "$ICON_PATH" ]; then
+    echo "   ℹ️  Using fallback icon"
+    ICON_PATH="steam"
+fi
+
+# Step 7: Create desktop entry for TonTonDeck
 echo ""
 echo "🖥️  Creating menu shortcut..."
 
@@ -119,7 +143,7 @@ cat > "$DESKTOP_DIR/tontondeck.desktop" << EOF
 Name=TonTonDeck
 Comment=Install games on Steam Deck
 Exec=$INSTALL_DIR/$APPIMAGE_NAME
-Icon=steam
+Icon=$ICON_PATH
 Type=Application
 Categories=Game;Utility;
 Terminal=false
