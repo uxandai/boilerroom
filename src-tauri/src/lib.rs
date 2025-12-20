@@ -3,6 +3,7 @@ mod install_manager;
 
 use commands::*;
 use install_manager::InstallManager;
+#[cfg(target_os = "linux")]
 use std::fs;
 use tauri::Manager;
 
