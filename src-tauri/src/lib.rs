@@ -13,6 +13,12 @@ pub fn run() {
     // WebKit has issues with Wayland on many distros (Arch, SteamOS, etc.)
     #[cfg(target_os = "linux")]
     {
+        // Always set these for maximum compatibility (especially Steam Deck AMD GPU)
+        // These must be set unconditionally to avoid EGL_BAD_PARAMETER errors
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+        std::env::set_var("WEBKIT_FORCE_SANDBOX", "0");
+
         // Check if running on Wayland
         let is_wayland = std::env::var("XDG_SESSION_TYPE")
             .map(|v| v == "wayland")
@@ -27,8 +33,12 @@ pub fn run() {
                 "[Tauri] Wayland/SteamOS detected, forcing X11 backend for WebKit compatibility"
             );
             std::env::set_var("GDK_BACKEND", "x11");
-            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-            std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+
+            // Software rendering fallback for AMD GPU (Steam Deck)
+            if is_steamos {
+                eprintln!("[Tauri] SteamOS detected, enabling software rendering fallback");
+                std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
+            }
         }
     }
 
