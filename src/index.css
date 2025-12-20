@@ -1,0 +1,172 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Steam-like dark blue color scheme - ALWAYS DARK */
+    --background: 220 20% 10%;
+    --foreground: 210 10% 90%;
+    --card: 220 20% 12%;
+    --card-foreground: 210 10% 90%;
+    --popover: 220 20% 12%;
+    --popover-foreground: 210 10% 90%;
+    --primary: 199 89% 70%;
+    --primary-foreground: 220 20% 10%;
+    --secondary: 220 15% 20%;
+    --secondary-foreground: 210 10% 90%;
+    --muted: 220 15% 20%;
+    --muted-foreground: 210 10% 60%;
+    --accent: 220 15% 25%;
+    --accent-foreground: 210 10% 90%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 15% 20%;
+    --input: 220 15% 20%;
+    --ring: 199 89% 70%;
+    --radius: 0.25rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Motiva Sans", Arial, Helvetica, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Steam-like button styles */
+.btn-steam {
+  background: linear-gradient(to bottom, #67c1f5 5%, #417a9b 95%);
+  color: #ffffff;
+  border: none;
+  padding: 8px 16px;
+  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-steam:hover {
+  background: linear-gradient(to bottom, #8ed0f8 5%, #5c99b8 95%);
+}
+
+.btn-steam:disabled {
+  background: linear-gradient(to bottom, #4a6a7a 5%, #3a5566 95%);
+  color: #808080;
+  cursor: not-allowed;
+}
+
+/* Steam-like card/panel */
+.steam-panel {
+  background: linear-gradient(to bottom, rgba(43, 59, 74, 0.9) 0%, rgba(32, 44, 55, 0.9) 100%);
+  border: 1px solid rgba(0, 0, 0, 0.3);
+}
+
+/* Status indicator colors */
+.status-online {
+  color: #5ba32b;
+}
+
+.status-offline {
+  color: #c7352e;
+}
+
+.status-warning {
+  color: #c7a62e;
+}
+
+/* Custom scrollbar for Steam look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(220 20% 8%);
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(220 15% 25%);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(220 15% 35%);
+}
+
+/* Game card hover effect */
+.game-card {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.game-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Steam header image aspect ratio */
+.steam-header-image {
+  aspect-ratio: 460 / 215;
+  object-fit: cover;
+}
+
+/* Steam capsule image aspect ratio */
+.steam-capsule-image {
+  aspect-ratio: 231 / 87;
+  object-fit: cover;
+}
+
+/* Prevent text selection in UI elements */
+.select-none {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Steam-like input fields */
+input, select, textarea {
+  background: rgba(0, 0, 0, 0.2) !important;
+  border: 1px solid rgba(0, 0, 0, 0.3) !important;
+  color: #acb2b8 !important;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: #67c1f5 !important;
+  outline: none;
+}

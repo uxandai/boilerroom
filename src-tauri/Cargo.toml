@@ -1,0 +1,39 @@
+[package]
+name = "tontondeck"
+version = "1.0.0"
+description = "Manager pakietów dla Steam Deck"
+authors = ["TonTonDeck Team"]
+edition = "2021"
+
+[lib]
+name = "tontondeck_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-store = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["stream", "json"] }
+ssh2 = "0.9"
+chrono = "0.4"
+tempfile = "3"
+anyhow = "1"
+thiserror = "1"
+futures = "0.3"
+urlencoding = "2"
+tauri-plugin-dialog = "2"
+zip = "2"
+regex = "1"
+walkdir = "2"
+notify = "6"
+crossbeam-channel = "0.5"
+dirs = "6.0.0"
+sevenz-rust = "0.6.1"
