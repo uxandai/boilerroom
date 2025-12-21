@@ -53,6 +53,29 @@ jobs:
           path: src-tauri/target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
 
+  build-flatpak:
+    runs-on: ubuntu-latest
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:gnome-46
+      options: --privileged
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: TonTonDeck.flatpak
+          manifest-path: flatpak/com.tontondeck.app.yml
+          cache-key: flatpak-builder-${{ github.sha }}
+
+      - name: Upload Flatpak
+        uses: actions/upload-artifact@v4
+        with:
+          name: TonTonDeck-linux-flatpak
+          path: TonTonDeck.flatpak
+          if-no-files-found: error
+
   # TODO: Uncomment when ready to build for macOS
   # build-macos:
   #   runs-on: macos-latest
@@ -136,7 +159,7 @@ jobs:
 
   # Create release when pushing a tag
   release:
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-flatpak, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -152,6 +175,7 @@ jobs:
         with:
           files: |
             artifacts/**/*.AppImage
+            artifacts/**/*.flatpak
             artifacts/**/*.exe
             artifacts/**/*.msi
           generate_release_notes: true

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.tontondeck.app</id>
+  <name>TonTonDeck</name>
+  <summary>Manager pakietów dla Steam Deck</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      TonTonDeck is a package manager for Steam Deck that helps you manage
+      and install games and applications.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.tontondeck.app.desktop</launchable>
+  <url type="homepage">https://github.com/tontondeck/tontondeck</url>
+  <provides>
+    <binary>tontondeck</binary>
+  </provides>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="1.0.0" date="2024-12-21">
+      <description>
+        <p>Initial release</p>
+      </description>
+    </release>
+  </releases>
+</component>
