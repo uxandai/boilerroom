@@ -30,6 +30,7 @@ export function LibraryPanel() {
 
     setIsLoading(true);
     setError(null);
+    setGames([]); // Clear list first to prevent duplicates
 
     try {
       let installedGames: InstalledGame[];
@@ -131,6 +132,7 @@ export function LibraryPanel() {
             <Checkbox
               id="filter-tontondeck"
               checked={showOnlyTonTonDeck}
+              disabled={isLoading}
               onCheckedChange={(checked) => {
                 const value = Boolean(checked);
                 setShowOnlyTonTonDeck(value);
@@ -206,8 +208,8 @@ export function LibraryPanel() {
                       >
                         <Search className="w-4 h-4" />
                       </Button>
-                      {/* Copy to Remote - only in local mode with SSH connected */}
-                      {connectionMode === "local" && connectionStatus === "ssh_ok" && (
+                      {/* Copy to Remote - only in local mode */}
+                      {connectionMode === "local" && (
                         <Button
                           variant="ghost"
                           size="sm"
