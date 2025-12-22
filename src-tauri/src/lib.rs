@@ -1,5 +1,6 @@
 mod commands;
 mod install_manager;
+mod steamless;
 
 use commands::*;
 use install_manager::InstallManager;
@@ -102,6 +103,7 @@ pub fn run() {
             check_game_update,
             check_game_installed,
             get_steam_libraries,
+            copy_game_to_remote,
             // Settings commands
             save_api_key,
             get_api_key,

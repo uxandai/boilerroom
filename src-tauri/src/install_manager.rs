@@ -377,80 +377,37 @@ impl InstallManager {
 
             // ========================================
             // PHASE 2: STEAMLESS (largest .exe only)
-            // Platform-specific: macOS=skip, Linux=mono, Windows=native
+            // Uses Wine/Proton with .NET 4.8 (ported from ACCELA)
             // ========================================
             if !steamless_path.is_empty() {
-                // Skip Steamless on macOS - not applicable
-                if cfg!(target_os = "macos") {
-                    eprintln!("[Steamless] Skipping - not applicable on macOS");
-                    m.update_status("steamless", "Skipping Steamless on macOS");
-                } else {
-                    m.update_status("steamless", "Finding main executable...");
-                    eprintln!("[Steamless] Looking for largest .exe in {:?}", download_dir_clone);
-                    
-                    // Find largest .exe file
-                    let mut largest_exe: Option<(PathBuf, u64)> = None;
-                    for entry in WalkDir::new(&download_dir_clone).max_depth(3).into_iter().filter_map(|e| e.ok()) {
-                        let path = entry.path();
-                        if path.extension().and_then(|e| e.to_str()) == Some("exe") {
-                            if let Ok(meta) = std::fs::metadata(path) {
-                                let size = meta.len();
-                                eprintln!("[Steamless] Found exe: {:?} ({} bytes)", path.file_name(), size);
-                                if largest_exe.is_none() || size > largest_exe.as_ref().unwrap().1 {
-                                    largest_exe = Some((path.to_path_buf(), size));
-                                }
-                            }
-                        }
+                use crate::steamless;
+                
+                let steamless_cli = std::path::PathBuf::from(&steamless_path);
+                let game_dir = download_dir_clone.clone();
+                let m_clone = m.clone();
+                
+                m.update_status("steamless", "Initializing Steamless...");
+                
+                match steamless::process_game_with_steamless(
+                    &game_dir,
+                    &steamless_cli,
+                    |msg| {
+                        eprintln!("[Steamless] {}", msg);
+                        m_clone.update_status("steamless", msg);
                     }
-
-                    if let Some((exe_path, size)) = largest_exe {
-                        let exe_name = exe_path.file_name().unwrap().to_string_lossy();
-                        eprintln!("[Steamless] Selected largest exe: {} ({} MB)", exe_name, size / (1024*1024));
-                        m.update_status("steamless", &format!("Patching {}", exe_name));
-                        
-                        // Build command based on OS
-                        let mut cmd = if cfg!(target_os = "windows") {
-                            eprintln!("[Steamless] Running natively on Windows: {:?}", steamless_path);
-                            Command::new(&steamless_path)
-                        } else {
-                            // Linux/SteamOS - use mono
-                            eprintln!("[Steamless] Running via mono on Linux: {:?}", steamless_path);
-                            let mut c = Command::new("mono");
-                            c.arg(&steamless_path);
-                            c
-                        };
-                        cmd.arg(&exe_path);
-                        
-                        match cmd.status() {
-                            Ok(status) => {
-                                eprintln!("[Steamless] Exit status: {:?}", status.code());
-                                if status.success() {
-                                    // Rename .unpacked.exe back to original
-                                    let unpacked = exe_path.with_file_name(format!(
-                                        "{}.unpacked.exe", 
-                                        exe_path.file_stem().unwrap().to_string_lossy()
-                                    ));
-                                    if unpacked.exists() {
-                                        let _ = std::fs::rename(&unpacked, &exe_path);
-                                        m.update_status("steamless", "Steamless patch applied!");
-                                        eprintln!("[Steamless] Patch applied successfully!");
-                                    } else {
-                                        m.update_status("steamless", "No DRM detected or already clean");
-                                        eprintln!("[Steamless] No .unpacked.exe found - game may be DRM-free");
-                                    }
-                                } else {
-                                    m.update_status("steamless", "Steamless failed - continuing anyway");
-                                    eprintln!("[Steamless] Failed with exit code {:?}", status.code());
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("[Steamless] Error running Steamless: {}", e);
-                                m.update_status("steamless", &format!("Steamless error: {}", e));
-                            }
-                        }
-                    } else {
-                        eprintln!("[Steamless] No .exe files found in game directory");
-                        m.update_status("steamless", "No executable found to patch");
+                ) {
+                    Ok(true) => {
+                        m.update_status("steamless", "Steam DRM successfully removed!");
+                        eprintln!("[Steamless] DRM removed successfully");
+                    }
+                    Ok(false) => {
+                        m.update_status("steamless", "No DRM detected or game is clean");
+                        eprintln!("[Steamless] No DRM found");
+                    }
+                    Err(e) => {
+                        m.update_status("steamless", &format!("Steamless error: {}", e));
+                        eprintln!("[Steamless] Error: {}", e);
+                        // Don't fail the entire install, continue anyway
                     }
                 }
             } else {
@@ -509,25 +466,44 @@ impl InstallManager {
                 
                 eprintln!("[rsync] Password auth: {}, sshpass available: {}", use_sshpass, has_sshpass);
                 
-                // Detect Homebrew rsync (supports --info=progress2)
-                let homebrew_rsync = if std::path::Path::new("/opt/homebrew/bin/rsync").exists() {
-                    Some("/opt/homebrew/bin/rsync")
+                // Detect rsync version to enable --info=progress2 (requires rsync 3.1.0+)
+                // First check Homebrew paths (macOS), then fall back to system rsync
+                let rsync_path = if std::path::Path::new("/opt/homebrew/bin/rsync").exists() {
+                    "/opt/homebrew/bin/rsync"
                 } else if std::path::Path::new("/usr/local/bin/rsync").exists() {
-                    Some("/usr/local/bin/rsync")
+                    "/usr/local/bin/rsync"
                 } else {
-                    None
+                    "rsync"
                 };
                 
-                let (rsync_path, use_info_progress) = match homebrew_rsync {
-                    Some(path) => {
-                        eprintln!("[rsync] Using Homebrew rsync with --info=progress2");
-                        (path, true)
-                    }
-                    None => {
-                        eprintln!("[rsync] Using system rsync with --progress");
-                        ("rsync", false)
-                    }
-                };
+                // Check if rsync supports --info=progress2 (version 3.1.0+)
+                let use_info_progress = Command::new(rsync_path)
+                    .arg("--version")
+                    .output()
+                    .map(|out| {
+                        let version_str = String::from_utf8_lossy(&out.stdout);
+                        // Parse version like "rsync  version 3.2.7  protocol version 31"
+                        if let Some(ver_line) = version_str.lines().next() {
+                            if let Some(ver_part) = ver_line.split("version").nth(1) {
+                                let ver_num = ver_part.trim().split_whitespace().next().unwrap_or("");
+                                let parts: Vec<&str> = ver_num.split('.').collect();
+                                if parts.len() >= 2 {
+                                    let major = parts[0].parse::<u32>().unwrap_or(0);
+                                    let minor = parts[1].parse::<u32>().unwrap_or(0);
+                                    // --info=progress2 was added in rsync 3.1.0
+                                    return major > 3 || (major == 3 && minor >= 1);
+                                }
+                            }
+                        }
+                        false
+                    })
+                    .unwrap_or(false);
+                
+                if use_info_progress {
+                    eprintln!("[rsync] Using {} with --info=progress2", rsync_path);
+                } else {
+                    eprintln!("[rsync] Using {} with --progress (older version)", rsync_path);
+                }
                 
                 let mut cmd = Command::new(rsync_path);
                 // -s (--protect-args) allows spaces in paths without escaping

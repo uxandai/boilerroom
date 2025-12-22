@@ -566,19 +566,38 @@ export function SettingsPanel() {
       {/* SLSsteam Installation */}
       <Card className="bg-[#1b2838] border-[#2a475e]">
         <CardHeader className="pb-3">
-          <CardTitle className="text-white">SLSsteam Installation on Steam Deck / Linux</CardTitle>
-          <CardDescription>SLSsteam is a library that allows running games not from the Steam store.</CardDescription>
+          <CardTitle className="text-white">
+            {connectionMode === "local"
+              ? "SLSsteam Installation (Local)"
+              : "SLSsteam Installation (Remote - Steam Deck)"}
+          </CardTitle>
+          <CardDescription>
+            {connectionMode === "local"
+              ? "Install SLSsteam on this machine. Patches Steam to run games not in your library."
+              : "Install SLSsteam on your Steam Deck via SSH. Requires active connection."}
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="bg-[#2a475e] border border-[#1b2838] p-3">
             <div className="flex items-start gap-2">
               <AlertCircle className="w-5 h-5 text-[#67c1f5] flex-shrink-0 mt-0.5" />
               <div className="text-sm">
-                <p className="font-medium text-white mb-1">Installation requires:</p>
+                <p className="font-medium text-white mb-1">
+                  {connectionMode === "local" ? "Local installation requires:" : "Remote installation requires:"}
+                </p>
                 <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                  <li>Creating an administrator password (does not affect normal usage)</li>
-                  <li>Enabling SSH service (only for remote connections)</li>
-                  <li>Disabling read-only mode (only for SteamOS in game mode)</li>
+                  {connectionMode === "local" ? (
+                    <>
+                      <li>Creating an administrator password (passwd in terminal)</li>
+                      <li>Sudo access for patching Steam launcher files</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>SSH enabled on Steam Deck (Settings → Developer Options)</li>
+                      <li>Admin password set on Steam Deck</li>
+                      <li>Read-only mode disabled (run: sudo steamos-readonly disable)</li>
+                    </>
+                  )}
                 </ul>
               </div>
             </div>

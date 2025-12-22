@@ -247,6 +247,7 @@ export interface InstalledGame {
   name: string;
   path: string;
   size_bytes: number;
+  has_depotdownloader_marker: boolean; // true if installed by TonTonDeck/ACCELA
   header_image?: string;
 }
 
@@ -288,6 +289,17 @@ export async function getSteamLibraries(
   config: SshConfig
 ): Promise<string[]> {
   return invoke<string[]>("get_steam_libraries", { config });
+}
+
+// Copy game from local to remote via rsync
+export async function copyGameToRemote(
+  config: SshConfig,
+  localPath: string,
+  remotePath: string,
+  appId: string,
+  gameName: string
+): Promise<void> {
+  return invoke<void>("copy_game_to_remote", { config, localPath, remotePath, appId, gameName });
 }
 
 // SteamGridDB commands

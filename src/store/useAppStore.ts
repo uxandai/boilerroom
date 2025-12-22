@@ -63,25 +63,26 @@ interface AppState {
   connectionStatus: ConnectionStatus;
   connectionMode: "remote" | "local"; // New mode
   connectionCheckPaused: boolean;
-  
+
   // Search
   searchQuery: string;
   searchResults: SearchResult[];
   isSearching: boolean;
   triggerSearch: boolean; // Flag to auto-trigger search
-  
+  libraryNeedsRefresh: boolean; // Flag to auto-trigger library refresh
+
   // UI State
   activeTab: string;
-  
+
   // Installation
   installProgress: InstallProgress | null;
-  
+
   // Logs
   logs: LogEntry[];
-  
+
   // Settings
   settings: Settings;
-  
+
   // Actions
   setSshConfig: (config: Partial<SshConfig>) => void;
   setConnectionStatus: (status: ConnectionStatus) => void;
@@ -91,6 +92,7 @@ interface AppState {
   setSearchResults: (results: SearchResult[]) => void;
   setIsSearching: (searching: boolean) => void;
   setTriggerSearch: (trigger: boolean) => void;
+  triggerLibraryRefresh: () => void;
   setActiveTab: (tab: string) => void;
   setInstallProgress: (progress: InstallProgress | null) => void;
   addLog: (level: LogEntry["level"], message: string) => void;
@@ -122,11 +124,12 @@ export const useAppStore = create<AppState>((set) => ({
   connectionStatus: "offline",
   connectionMode: "remote", // Default to remote
   connectionCheckPaused: false,
-  
+
   searchQuery: "",
   searchResults: [],
   isSearching: false,
   triggerSearch: false,
+  libraryNeedsRefresh: false,
   activeTab: "search",
   installProgress: null,
   logs: [],
@@ -139,9 +142,10 @@ export const useAppStore = create<AppState>((set) => ({
   toggleConnectionCheck: () => set((state) => ({ connectionCheckPaused: !state.connectionCheckPaused })),
 
   setSearchQuery: (query) => set({ searchQuery: query }),
-  
+
   setTriggerSearch: (trigger) => set({ triggerSearch: trigger }),
-  
+  triggerLibraryRefresh: () => set({ libraryNeedsRefresh: true }),
+
   setActiveTab: (tab) => set({ activeTab: tab }),
 
   setSearchResults: (results) => set({ searchResults: results }),

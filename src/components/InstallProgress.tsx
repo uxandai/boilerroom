@@ -75,7 +75,7 @@ export function InstallProgress() {
     }
     setInstallProgress(null);
   };
-  
+
   const handlePause = async () => {
     addLog("info", "Pausing installation...");
     try {
@@ -85,7 +85,7 @@ export function InstallProgress() {
       addLog("error", `Pause failed: ${error}`);
     }
   };
-  
+
   const handleResume = async () => {
     addLog("info", "Resuming installation...");
     try {
@@ -103,23 +103,23 @@ export function InstallProgress() {
   return (
     <div className="relative overflow-hidden bg-[#1b2838] border-b border-[#0a0a0a]">
       {/* Background Hero Image */}
-      <div 
+      <div
         className="absolute inset-0 bg-cover bg-center opacity-30"
-        style={{ 
-          backgroundImage: installProgress.heroImage 
-            ? `url(${installProgress.heroImage})` 
+        style={{
+          backgroundImage: installProgress.heroImage
+            ? `url(${installProgress.heroImage})`
             : 'linear-gradient(135deg, #1b2838 0%, #2a475e 100%)'
         }}
       />
       <div className="absolute inset-0 bg-gradient-to-r from-[#1b2838] via-[#1b2838]/80 to-transparent" />
-      
+
       {/* Content */}
       <div className="relative flex items-stretch">
         {/* Left: Game Info */}
         <div className="w-72 p-4 flex items-center justify-center">
           {installProgress.heroImage ? (
-            <img 
-              src={installProgress.heroImage} 
+            <img
+              src={installProgress.heroImage}
               alt={installProgress.gameName}
               className="max-h-20 object-contain"
             />
@@ -145,9 +145,10 @@ export function InstallProgress() {
 
           {/* Main progress bar */}
           <div className="flex items-center gap-3">
-            <div className="flex-1 h-3 bg-[#0a0a0a] rounded-full overflow-hidden">
-              <div 
-                className={`h-full ${phaseInfo.bgColor} transition-all duration-300`}
+            <div className="flex-1 h-3 bg-[#0a0a0a] rounded-full overflow-hidden progress-glow">
+              <div
+                className={`h-full transition-all duration-300 ${installProgress.step === "finished" ? phaseInfo.bgColor : "progress-shimmer"
+                  }`}
                 style={{ width: `${overallProgress}%` }}
               />
             </div>
@@ -203,7 +204,7 @@ export function InstallProgress() {
               </svg>
             </button>
           )}
-          
+
           {/* Resume button - only when paused */}
           {installProgress.step === "paused" && (
             <button
@@ -216,7 +217,7 @@ export function InstallProgress() {
               </svg>
             </button>
           )}
-          
+
           {/* Cancel button */}
           {!isDone && !isError && !isCancelled && (
             <button
@@ -227,7 +228,7 @@ export function InstallProgress() {
               <X className="w-5 h-5 text-white" />
             </button>
           )}
-          
+
           {/* Close button - for done/error/cancelled states */}
           {(isDone || isError || isCancelled) && (
             <button

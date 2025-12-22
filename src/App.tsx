@@ -13,7 +13,7 @@ import { useEffect, useState } from "react";
 import "./index.css";
 
 function App() {
-  const { setSettings, setSshConfig, activeTab, setActiveTab, setConnectionMode } = useAppStore();
+  const { setSettings, setSshConfig, activeTab, setActiveTab, setConnectionMode, triggerLibraryRefresh } = useAppStore();
   const [showModeSelection, setShowModeSelection] = useState<boolean | null>(null);
 
   // Load saved settings on startup
@@ -28,19 +28,19 @@ function App() {
         } else {
           setShowModeSelection(true);
         }
-        
+
         // Load API key
         const savedApiKey = await getApiKey();
         if (savedApiKey) {
           setSettings({ apiKey: savedApiKey });
         }
-        
+
         // Load SSH config
         const { loadSshConfig, loadToolSettings } = await import("@/lib/api");
         const savedSshConfig = await loadSshConfig();
         if (savedSshConfig) {
           setSshConfig(savedSshConfig);
-          
+
           // Auto-connect if SSH config was saved
           if (savedSshConfig.ip && savedSshConfig.password) {
             try {
@@ -49,6 +49,7 @@ function App() {
               if (status === "online") {
                 await testSshConnection(savedSshConfig);
                 useAppStore.getState().setConnectionStatus("ssh_ok");
+                useAppStore.getState().triggerLibraryRefresh(); // Auto-load library on connect
                 console.log("Auto-connected to Steam Deck");
               }
             } catch {
@@ -56,7 +57,7 @@ function App() {
             }
           }
         }
-        
+
         // Load tool settings
         const savedToolSettings = await loadToolSettings();
         if (savedToolSettings) {
@@ -67,7 +68,7 @@ function App() {
             steamGridDbApiKey: savedToolSettings.steamGridDbApiKey || "",
           });
         }
-        
+
         // Load cached SLSsteam version from disk
         const { getCachedSlssteamVersion, getCachedSlssteamPath } = await import("@/lib/api");
         const cachedVersion = await getCachedSlssteamVersion();
@@ -85,7 +86,7 @@ function App() {
     };
     loadSettings();
   }, [setSettings, setSshConfig, setConnectionMode]);
-  
+
   // Listen for install progress
   useEffect(() => {
     import("@tauri-apps/api/event").then(({ listen }) => {
@@ -109,7 +110,7 @@ function App() {
           error: payload.state === "error" ? payload.message : undefined,
         });
       });
-      
+
       return () => {
         unlisten.then(f => f());
       };
@@ -129,7 +130,10 @@ function App() {
 
   // Show mode selection screen if not yet selected
   if (showModeSelection) {
-    return <ModeSelectionScreen onModeSelected={() => setShowModeSelection(false)} />;
+    return <ModeSelectionScreen onModeSelected={() => {
+      setShowModeSelection(false);
+      triggerLibraryRefresh(); // Auto-load library when mode is selected
+    }} />;
   }
 
 
@@ -154,31 +158,31 @@ function App() {
       <div className="px-4">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="w-full justify-start bg-transparent border-b border-[#2a475e] p-0 h-auto gap-0 rounded-none mb-0">
-            <TabsTrigger 
-              value="search" 
+            <TabsTrigger
+              value="search"
               className="px-6 py-3 text-sm font-bold uppercase tracking-wide rounded-none border-b-2 border-transparent data-[state=active]:border-[#67c1f5] data-[state=active]:text-[#67c1f5] data-[state=active]:bg-transparent text-gray-400 hover:text-white bg-transparent"
             >
               Download
             </TabsTrigger>
-            <TabsTrigger 
-              value="library" 
+            <TabsTrigger
+              value="library"
               className="px-6 py-3 text-sm font-bold uppercase tracking-wide rounded-none border-b-2 border-transparent data-[state=active]:border-[#67c1f5] data-[state=active]:text-[#67c1f5] data-[state=active]:bg-transparent text-gray-400 hover:text-white bg-transparent"
             >
               Library
             </TabsTrigger>
-            <TabsTrigger 
-              value="settings" 
+            <TabsTrigger
+              value="settings"
               className="px-6 py-3 text-sm font-bold uppercase tracking-wide rounded-none border-b-2 border-transparent data-[state=active]:border-[#67c1f5] data-[state=active]:text-[#67c1f5] data-[state=active]:bg-transparent text-gray-400 hover:text-white bg-transparent"
             >
               Settings
             </TabsTrigger>
-            <TabsTrigger 
-              value="logs" 
+            <TabsTrigger
+              value="logs"
               className="px-6 py-3 text-sm font-bold uppercase tracking-wide rounded-none border-b-2 border-transparent data-[state=active]:border-[#67c1f5] data-[state=active]:text-[#67c1f5] data-[state=active]:bg-transparent text-gray-400 hover:text-white bg-transparent"
             >
               Logs
             </TabsTrigger>
-            
+
             <button
               onClick={() => {
                 import('@tauri-apps/plugin-process').then(({ exit }) => exit(0));

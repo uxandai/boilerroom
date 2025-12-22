@@ -1,16 +1,26 @@
 import { useAppStore } from "@/store/useAppStore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Trash2, FolderOpen, AlertCircle, Loader2, Search } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { RefreshCw, Trash2, FolderOpen, AlertCircle, Loader2, Search, Upload } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { listInstalledGames, listInstalledGamesLocal, fetchSteamGridDbArtwork, type InstalledGame } from "@/lib/api";
+import { CopyToRemoteModal } from "@/components/CopyToRemoteModal";
 
 export function LibraryPanel() {
-  const { sshConfig, addLog, connectionStatus, connectionMode, setSearchQuery, settings, setActiveTab, setTriggerSearch } = useAppStore();
+  const { sshConfig, addLog, connectionStatus, connectionMode, setSearchQuery, settings, setActiveTab, setTriggerSearch, libraryNeedsRefresh } = useAppStore();
   const [games, setGames] = useState<InstalledGame[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [artworkMap, setArtworkMap] = useState<Map<string, string>>(new Map());
+  const [showOnlyTonTonDeck, setShowOnlyTonTonDeck] = useState<boolean>(() => {
+    // Load saved preference from localStorage
+    const saved = localStorage.getItem("libraryFilterTonTonDeck");
+    return saved !== null ? saved === "true" : true; // Default to true
+  });
+  // State for Copy to Remote modal
+  const [copyToRemoteGame, setCopyToRemoteGame] = useState<InstalledGame | null>(null);
 
   const refreshGames = async () => {
     if (connectionMode === "remote" && (!sshConfig.ip || !sshConfig.password)) {
@@ -70,6 +80,15 @@ export function LibraryPanel() {
   // Track if games have been loaded
   const hasLoadedRef = useRef(false);
 
+  // Auto-refresh when libraryNeedsRefresh flag is set (by App.tsx on mode change/connect)
+  useEffect(() => {
+    if (libraryNeedsRefresh) {
+      // Clear the flag first via direct store update
+      useAppStore.setState({ libraryNeedsRefresh: false });
+      refreshGames();
+    }
+  }, [libraryNeedsRefresh]);
+
   // Reset loaded state when disconnected (only for remote mode)
   useEffect(() => {
     if (connectionMode === "remote" && connectionStatus !== "ssh_ok") {
@@ -92,7 +111,7 @@ export function LibraryPanel() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-white">Installed Games</CardTitle>
-              <CardDescription>List of Steam games managed by TonTonDeck</CardDescription>
+              <CardDescription>List of Steam games {showOnlyTonTonDeck ? "installed by TonTonDeck" : "in your library"}</CardDescription>
             </div>
             <Button
               variant="outline"
@@ -106,6 +125,21 @@ export function LibraryPanel() {
                 <RefreshCw className="w-4 h-4" />
               )}
             </Button>
+          </div>
+          {/* Filter checkbox */}
+          <div className="flex items-center gap-2 mt-2">
+            <Checkbox
+              id="filter-tontondeck"
+              checked={showOnlyTonTonDeck}
+              onCheckedChange={(checked) => {
+                const value = Boolean(checked);
+                setShowOnlyTonTonDeck(value);
+                localStorage.setItem("libraryFilterTonTonDeck", String(value));
+              }}
+            />
+            <Label htmlFor="filter-tontondeck" className="text-sm text-muted-foreground cursor-pointer">
+              Show only TonTonDeck-installed games
+            </Label>
           </div>
         </CardHeader>
         <CardContent>
@@ -132,75 +166,96 @@ export function LibraryPanel() {
 
           {games.length > 0 && (
             <div className="space-y-2">
-              {games.map((game) => (
-                <div
-                  key={game.app_id}
-                  className="bg-[#171a21] border border-[#0a0a0a] p-3 flex items-center justify-between hover:bg-[#1b2838] transition-colors"
-                >
-                  <div className="flex items-center gap-4">
-                    {artworkMap.get(game.app_id) || game.header_image ? (
-                      <img
-                        src={artworkMap.get(game.app_id) || game.header_image}
-                        alt={game.name}
-                        className="w-24 h-9 object-cover rounded"
-                      />
-                    ) : (
-                      <div className="w-24 h-9 bg-[#2a475e] rounded flex items-center justify-center">
-                        <FolderOpen className="w-4 h-4 text-muted-foreground" />
+              {games
+                .filter(game => !showOnlyTonTonDeck || game.has_depotdownloader_marker)
+                .map((game) => (
+                  <div
+                    key={game.app_id}
+                    className="bg-[#171a21] border border-[#0a0a0a] p-3 flex items-center justify-between hover:bg-[#1b2838] transition-colors"
+                  >
+                    <div className="flex items-center gap-4">
+                      {artworkMap.get(game.app_id) || game.header_image ? (
+                        <img
+                          src={artworkMap.get(game.app_id) || game.header_image}
+                          alt={game.name}
+                          className="w-24 h-9 object-cover rounded"
+                        />
+                      ) : (
+                        <div className="w-24 h-9 bg-[#2a475e] rounded flex items-center justify-center">
+                          <FolderOpen className="w-4 h-4 text-muted-foreground" />
+                        </div>
+                      )}
+                      <div>
+                        <p className="font-medium text-white">{game.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          AppID: {game.app_id} • {formatSize(game.size_bytes)}
+                        </p>
                       </div>
-                    )}
-                    <div>
-                      <p className="font-medium text-white">{game.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        AppID: {game.app_id} • {formatSize(game.size_bytes)}
-                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-[#67c1f5] hover:text-[#8ed0f8] hover:bg-[#2a475e]"
+                        title="Search for updates"
+                        onClick={() => {
+                          setSearchQuery(game.app_id !== "unknown" ? game.app_id : game.name);
+                          setActiveTab("search");
+                          setTriggerSearch(true);
+                        }}
+                      >
+                        <Search className="w-4 h-4" />
+                      </Button>
+                      {/* Copy to Remote - only in local mode with SSH connected */}
+                      {connectionMode === "local" && connectionStatus === "ssh_ok" && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-green-400 hover:text-green-300 hover:bg-green-900/20"
+                          title="Copy to Steam Deck"
+                          onClick={() => setCopyToRemoteGame(game)}
+                        >
+                          <Upload className="w-4 h-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                        title="Uninstall"
+                        onClick={async () => {
+                          if (!confirm(`Are you sure you want to uninstall ${game.name}?`)) return;
+                          try {
+                            const { uninstallGame } = await import("@/lib/api");
+                            // Use correct config based on connection mode
+                            const configForUninstall = { ...sshConfig };
+                            if (connectionMode === "local") {
+                              configForUninstall.is_local = true;
+                            }
+                            await uninstallGame(configForUninstall, game.path, game.app_id);
+                            addLog("info", `Uninstalled: ${game.name}`);
+                            refreshGames(); // Refresh list
+                          } catch (e) {
+                            addLog("error", `Uninstall error: ${e}`);
+                          }
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-[#67c1f5] hover:text-[#8ed0f8] hover:bg-[#2a475e]"
-                      title="Search for updates"
-                      onClick={() => {
-                        setSearchQuery(game.app_id !== "unknown" ? game.app_id : game.name);
-                        setActiveTab("search");
-                        setTriggerSearch(true);
-                      }}
-                    >
-                      <Search className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
-                      title="Uninstall"
-                      onClick={async () => {
-                        if (!confirm(`Are you sure you want to uninstall ${game.name}?`)) return;
-                        try {
-                          const { uninstallGame } = await import("@/lib/api");
-                          // Use correct config based on connection mode
-                          const configForUninstall = { ...sshConfig };
-                          if (connectionMode === "local") {
-                            configForUninstall.is_local = true;
-                          }
-                          await uninstallGame(configForUninstall, game.path, game.app_id);
-                          addLog("info", `Uninstalled: ${game.name}`);
-                          refreshGames(); // Refresh list
-                        } catch (e) {
-                          addLog("error", `Uninstall error: ${e}`);
-                        }
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Copy to Remote Modal */}
+      <CopyToRemoteModal
+        isOpen={copyToRemoteGame !== null}
+        onClose={() => setCopyToRemoteGame(null)}
+        game={copyToRemoteGame}
+      />
     </div>
   );
 }

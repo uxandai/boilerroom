@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
+use tauri::Emitter;
 
 // SSH Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1436,17 +1437,17 @@ fn add_app_to_config(content: &str, app_id: &str) -> Result<String, String> {
     if content.contains(&format!("- {}", app_id)) {
         return Ok(content.to_string());
     }
-    
+
     // Find AdditionalApps section
     if let Some(idx) = content.find("AdditionalApps:") {
         // Find the end of AdditionalApps line
         let after_key = &content[idx..];
         if let Some(newline_idx) = after_key.find('\n') {
             let insert_pos = idx + newline_idx + 1;
-            
+
             // Insert the new entry (no indentation needed for YAML list items)
             let new_entry = format!("- {}\n", app_id);
-            
+
             let mut result = String::with_capacity(content.len() + new_entry.len());
             result.push_str(&content[..insert_pos]);
             result.push_str(&new_entry);
@@ -1454,7 +1455,7 @@ fn add_app_to_config(content: &str, app_id: &str) -> Result<String, String> {
             return Ok(result);
         }
     }
-    
+
     // No AdditionalApps section - append it
     let mut result = content.to_string();
     if !result.ends_with('\n') && !result.is_empty() {
@@ -1475,6 +1476,7 @@ pub struct InstalledGame {
     pub name: String,
     pub path: String,
     pub size_bytes: u64,
+    pub has_depotdownloader_marker: bool, // true if installed by TonTonDeck/ACCELA
     #[serde(skip_serializing_if = "Option::is_none")]
     pub header_image: Option<String>,
 }
@@ -1568,9 +1570,7 @@ pub async fn list_installed_games(config: SshConfig) -> Result<Vec<InstalledGame
             );
             let marker_out = ssh_exec(&sess, &marker_cmd)?;
 
-            if marker_out.trim() != "YES" {
-                continue; // Not installed by DepotDownloader, skip
-            }
+            let has_depotdownloader_marker = marker_out.trim() == "YES";
 
             // Get directory size
             let size_cmd = format!("du -sb '{}' 2>/dev/null | cut -f1 || echo '0'", game_path);
@@ -1593,6 +1593,7 @@ pub async fn list_installed_games(config: SshConfig) -> Result<Vec<InstalledGame
                 name: name.to_string(),
                 path: game_path,
                 size_bytes,
+                has_depotdownloader_marker,
                 header_image: None,
             });
         }
@@ -1691,9 +1692,7 @@ pub async fn list_installed_games_local() -> Result<Vec<InstalledGame>, String> 
 
                 // Check for .DepotDownloader marker (TonTonDeck/ACCELA installed)
                 let marker_path = path.join(".DepotDownloader");
-                if !marker_path.exists() {
-                    continue;
-                }
+                let has_depotdownloader_marker = marker_path.exists();
 
                 // Calculate directory size
                 let mut size_bytes: u64 = 0;
@@ -1712,8 +1711,8 @@ pub async fn list_installed_games_local() -> Result<Vec<InstalledGame>, String> 
                     .unwrap_or_else(|| "unknown".to_string());
 
                 eprintln!(
-                    "[list_installed_games_local] Found: {} (AppID: {})",
-                    name, app_id
+                    "[list_installed_games_local] Found: {} (AppID: {}, marker: {})",
+                    name, app_id, has_depotdownloader_marker
                 );
 
                 games.push(InstalledGame {
@@ -1721,6 +1720,7 @@ pub async fn list_installed_games_local() -> Result<Vec<InstalledGame>, String> 
                     name,
                     path: path.to_string_lossy().to_string(),
                     size_bytes,
+                    has_depotdownloader_marker,
                     header_image: None,
                 });
             }
@@ -2223,8 +2223,10 @@ pub async fn verify_slssteam(config: SshConfig) -> Result<SlssteamStatus, String
         // Parse config for settings
         let (config_play_not_owned, config_safe_mode_on, additional_apps_count) = if config_exists {
             if let Ok(content) = std::fs::read_to_string(&config_path) {
-                let play_not_owned = content.contains("PlayNotOwnedGames: true") || content.contains("PlayNotOwnedGames: yes");
-                let safe_mode_on = content.contains("SafeMode: true") || content.contains("SafeMode: yes");
+                let play_not_owned = content.contains("PlayNotOwnedGames: true")
+                    || content.contains("PlayNotOwnedGames: yes");
+                let safe_mode_on =
+                    content.contains("SafeMode: true") || content.contains("SafeMode: yes");
                 let apps_count = content.matches("- ").count();
                 eprintln!(
                     "[SLSsteam Verify] Config PlayNotOwnedGames: {}",
@@ -3331,6 +3333,294 @@ pub async fn fetch_latest_slssteam() -> Result<String, String> {
         "SLSsteam {} downloaded successfully",
         release.tag_name
     ))
+}
+
+// ============================================================================
+// COPY GAME TO REMOTE COMMAND
+// ============================================================================
+
+/// Copy a locally installed game to a remote Steam Deck via rsync
+/// Also updates SLSsteam config on remote and creates ACF manifest
+#[tauri::command]
+pub async fn copy_game_to_remote(
+    app: tauri::AppHandle,
+    config: SshConfig,
+    local_path: String,
+    remote_path: String,
+    app_id: String,
+    game_name: String,
+) -> Result<(), String> {
+    use regex::Regex;
+    use std::io::BufReader;
+    use std::process::{Command, Stdio};
+
+    // Get folder name from local path
+    let local_path_buf = PathBuf::from(&local_path);
+    let folder_name = local_path_buf
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&app_id)
+        .to_string();
+
+    let remote_game_path = format!("{}/{}", remote_path, folder_name);
+    let dst_path = format!("{}@{}:{}", config.username, config.ip, remote_game_path);
+    let src_path = format!("{}/", local_path);
+
+    eprintln!(
+        "[copy_game_to_remote] Starting copy: {} -> {}",
+        src_path, dst_path
+    );
+
+    // Check if sshpass is available
+    let has_sshpass = !config.password.is_empty()
+        && Command::new("which")
+            .arg("sshpass")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+    // Detect rsync version for --info=progress2 support
+    let rsync_path = if std::path::Path::new("/opt/homebrew/bin/rsync").exists() {
+        "/opt/homebrew/bin/rsync"
+    } else if std::path::Path::new("/usr/local/bin/rsync").exists() {
+        "/usr/local/bin/rsync"
+    } else {
+        "rsync"
+    };
+
+    let use_info_progress = Command::new(rsync_path)
+        .arg("--version")
+        .output()
+        .map(|out| {
+            let version_str = String::from_utf8_lossy(&out.stdout);
+            if let Some(ver_line) = version_str.lines().next() {
+                if let Some(ver_part) = ver_line.split("version").nth(1) {
+                    let ver_num = ver_part.trim().split_whitespace().next().unwrap_or("");
+                    let parts: Vec<&str> = ver_num.split('.').collect();
+                    if parts.len() >= 2 {
+                        let major = parts[0].parse::<u32>().unwrap_or(0);
+                        let minor = parts[1].parse::<u32>().unwrap_or(0);
+                        return major > 3 || (major == 3 && minor >= 1);
+                    }
+                }
+            }
+            false
+        })
+        .unwrap_or(false);
+
+    // Build rsync command
+    let mut cmd = Command::new(rsync_path);
+    if use_info_progress {
+        cmd.args(["-avzs", "--info=progress2", "--no-inc-recursive"]);
+    } else {
+        cmd.args(["-avzs", "--progress"]);
+    }
+
+    if has_sshpass {
+        let ssh_cmd = format!(
+            "sshpass -e ssh -p {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+            config.port
+        );
+        cmd.env("SSHPASS", &config.password);
+        cmd.args(["-e", &ssh_cmd]);
+    } else if !config.private_key_path.is_empty() {
+        let ssh_cmd = format!(
+            "ssh -p {} -i {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+            config.port, config.private_key_path
+        );
+        cmd.args(["-e", &ssh_cmd]);
+    } else {
+        let ssh_cmd = format!(
+            "ssh -p {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+            config.port
+        );
+        cmd.args(["-e", &ssh_cmd]);
+    }
+
+    cmd.args([&src_path, &dst_path]);
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    // Spawn rsync process
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to start rsync: {}", e))?;
+
+    // Parse progress from stdout
+    let files_re = Regex::new(r"to-chk=(\d+)/(\d+)").unwrap();
+    let speed_re = Regex::new(r"(\d+\.?\d*[KMG]?B/s)").unwrap();
+
+    if let Some(stdout) = child.stdout.take() {
+        let reader = BufReader::new(stdout);
+        let app_clone = app.clone();
+
+        std::thread::spawn(move || {
+            use std::io::Read;
+            use tauri::Emitter;
+            let mut buffer = [0u8; 1];
+            let mut line = String::new();
+            let mut stdout = reader.into_inner();
+
+            while let Ok(1) = stdout.read(&mut buffer) {
+                let ch = buffer[0] as char;
+                if ch == '\r' || ch == '\n' {
+                    if !line.is_empty() {
+                        // Parse progress
+                        if let Some(caps) = files_re.captures(&line) {
+                            if let (Some(remaining), Some(total)) = (caps.get(1), caps.get(2)) {
+                                if let (Ok(r), Ok(t)) = (
+                                    remaining.as_str().parse::<usize>(),
+                                    total.as_str().parse::<usize>(),
+                                ) {
+                                    let done = t.saturating_sub(r);
+                                    let percent = if t > 0 {
+                                        (done as f64 / t as f64) * 100.0
+                                    } else {
+                                        0.0
+                                    };
+                                    let speed = speed_re
+                                        .captures(&line)
+                                        .and_then(|c| c.get(1))
+                                        .map(|m| m.as_str().to_string())
+                                        .unwrap_or_default();
+
+                                    let _ = app_clone.emit("install-progress", serde_json::json!({
+                                        "state": "transferring",
+                                        "message": format!("Copying to Steam Deck: {}/{}", done, t),
+                                        "download_percent": percent,
+                                        "transfer_speed": speed,
+                                        "files_transferred": done,
+                                        "files_total": t
+                                    }));
+                                }
+                            }
+                        }
+                        line.clear();
+                    }
+                } else {
+                    line.push(ch);
+                }
+            }
+        });
+    }
+
+    // Wait for rsync to complete
+    let status = child
+        .wait()
+        .map_err(|e| format!("rsync wait failed: {}", e))?;
+
+    if !status.success() {
+        let exit_code = status.code().unwrap_or(-1);
+        let error_msg = match exit_code {
+            255 => format!(
+                "SSH connection failed. Check IP ({}), SSH enabled, password correct.",
+                config.ip
+            ),
+            _ => format!("rsync failed with exit code {}", exit_code),
+        };
+        let _ = app.emit(
+            "install-progress",
+            serde_json::json!({
+                "state": "error",
+                "message": error_msg
+            }),
+        );
+        return Err(error_msg);
+    }
+
+    // Update SLSsteam config on remote
+    let _ = app.emit(
+        "install-progress",
+        serde_json::json!({
+            "state": "configuring",
+            "message": "Updating SLSsteam config..."
+        }),
+    );
+
+    // Connect via SSH to update config
+    let addr = format!("{}:{}", config.ip, config.port);
+    if let Ok(tcp) = TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(10)) {
+        if let Ok(mut sess) = ssh2::Session::new() {
+            sess.set_tcp_stream(tcp);
+            if sess.handshake().is_ok()
+                && sess
+                    .userauth_password(&config.username, &config.password)
+                    .is_ok()
+            {
+                // Read existing config
+                let mut content = String::new();
+                if let Ok(mut channel) = sess.channel_session() {
+                    if channel
+                        .exec("cat ~/.config/SLSsteam/config.yaml 2>/dev/null || echo ''")
+                        .is_ok()
+                    {
+                        let _ = channel.read_to_string(&mut content);
+                        let _ = channel.wait_close();
+                    }
+                }
+
+                // Add app to config
+                let new_config = add_app_to_config(&content, &app_id)?;
+
+                // Write back
+                if let Ok(mut channel) = sess.channel_session() {
+                    if channel
+                        .exec("mkdir -p ~/.config/SLSsteam && cat > ~/.config/SLSsteam/config.yaml")
+                        .is_ok()
+                    {
+                        let _ = channel.write_all(new_config.as_bytes());
+                        let _ = channel.send_eof();
+                        let _ = channel.wait_close();
+                    }
+                }
+
+                // Create ACF manifest
+                let steamapps_dir = remote_path
+                    .trim_end_matches('/')
+                    .trim_end_matches("/common");
+                let acf_path = format!("{}/appmanifest_{}.acf", steamapps_dir, app_id);
+                let acf_content = format!(
+                    r#""AppState"
+{{
+	"appid"		"{app_id}"
+	"Universe"		"1"
+	"name"		"{game_name}"
+	"StateFlags"		"4"
+	"installdir"		"{folder_name}"
+	"UserConfig"
+	{{
+		"platform_override_dest"		"linux"
+		"platform_override_source"		"windows"
+	}}
+}}"#,
+                    app_id = app_id,
+                    game_name = game_name,
+                    folder_name = folder_name
+                );
+
+                if let Ok(mut channel) = sess.channel_session() {
+                    let cmd = format!("cat > \"{}\"", acf_path);
+                    if channel.exec(&cmd).is_ok() {
+                        let _ = channel.write_all(acf_content.as_bytes());
+                        let _ = channel.send_eof();
+                        let _ = channel.wait_close();
+                    }
+                }
+            }
+        }
+    }
+
+    // Done!
+    let _ = app.emit(
+        "install-progress",
+        serde_json::json!({
+            "state": "finished",
+            "message": format!("{} copied successfully!", game_name),
+            "download_percent": 100.0
+        }),
+    );
+
+    Ok(())
 }
 
 #[cfg(test)]
