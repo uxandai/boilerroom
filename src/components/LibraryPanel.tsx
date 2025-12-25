@@ -59,20 +59,29 @@ export function LibraryPanel() {
   };
 
   const fetchArtworks = async (gamesList: InstalledGame[]) => {
-    const newArtwork = new Map<string, string>();
-
-    for (const game of gamesList) {
+    // Optimization: Parallelize artwork fetching instead of sequential
+    // This significantly reduces load time for large libraries
+    const artworkPromises = gamesList.map(async (game) => {
       if (game.app_id && game.app_id !== "unknown") {
         try {
           const artwork = await fetchSteamGridDbArtwork(settings.steamGridDbApiKey, game.app_id);
-          if (artwork) {
-            newArtwork.set(game.app_id, artwork);
-          }
+          return { appId: game.app_id, artwork };
         } catch {
           // Ignore artwork fetch errors
+          return null;
         }
       }
-    }
+      return null;
+    });
+
+    const results = await Promise.all(artworkPromises);
+
+    const newArtwork = new Map<string, string>();
+    results.forEach(result => {
+      if (result && result.artwork) {
+        newArtwork.set(result.appId, result.artwork);
+      }
+    });
 
     setArtworkMap(newArtwork);
     addLog("info", `Downloaded ${newArtwork.size} covers from SteamGridDB`);
