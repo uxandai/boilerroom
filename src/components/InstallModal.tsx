@@ -271,6 +271,13 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
 
       const targetPath = `${selectedLibrary}/steamapps/common`;
 
+      // Validate tools before starting
+      if (!settings.depotDownloaderPath) {
+        addLog("error", "DepotDownloaderMod path is not configured. Please go to Settings > Paths and Tools.");
+        // We could also show a UI alert here if needed
+        return;
+      }
+
       // Inject is_local flag if needed
       const configToUse = { ...sshConfig };
       const { connectionMode } = useAppStore.getState();

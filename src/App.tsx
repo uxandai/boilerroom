@@ -79,6 +79,29 @@ function App() {
             slssteamPath: cachedPath || "",
           });
         }
+
+        // Auto-detect local SLSsteam (if in local mode)
+        if (savedMode === "local") {
+          const { verifySlssteamLocal } = await import("@/lib/api");
+          try {
+            const localStatus = await verifySlssteamLocal();
+            if (localStatus.slssteam_so_exists) {
+              // Only update if we don't have a path set (or just force it to standard location)
+              const homeDir = await (await import("@tauri-apps/api/path")).homeDir();
+              // Ensure we have a separator
+              const sep = homeDir.endsWith("/") || homeDir.endsWith("\\") ? "" : "/";
+              const standardPath = `${homeDir}${sep}.local/share/SLSsteam/SLSsteam.so`;
+
+              setSettings({
+                slssteamPath: standardPath,
+                // We could also try to infer version if needed, but not critical
+              });
+              console.log("Auto-detected local SLSsteam at:", standardPath);
+            }
+          } catch (e) {
+            console.log("Failed to auto-detect local SLSsteam:", e);
+          }
+        }
       } catch (error) {
         console.error("Failed to load settings:", error);
         setShowModeSelection(true);
@@ -109,6 +132,12 @@ function App() {
           message: payload.message,
           error: payload.state === "error" ? payload.message : undefined,
         });
+
+        // Auto-refresh library when install finishes
+        if (payload.state === "finished") {
+          console.log("Install finished, refreshing library...");
+          useAppStore.getState().triggerLibraryRefresh();
+        }
       });
 
       return () => {

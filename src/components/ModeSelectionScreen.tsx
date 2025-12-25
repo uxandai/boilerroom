@@ -22,12 +22,8 @@ export function ModeSelectionScreen({ onModeSelected }: ModeSelectionScreenProps
         setDetectedAsSteamDeck(result.is_steam_deck);
         setOsName(result.os_name);
         
-        // If detected as Steam Deck, auto-select local mode after a short delay
-        if (result.is_steam_deck) {
-          setTimeout(() => {
-            handleSelectMode("local");
-          }, 2000); // Give user 2s to see the detection message
-        }
+        // If detected as Steam Deck, we show the confirmation screen
+        // but we DO NOT auto-select anymore (user feedback: it's annoying)
       } catch (error) {
         console.log("Platform detection failed:", error);
       } finally {
@@ -72,8 +68,14 @@ export function ModeSelectionScreen({ onModeSelected }: ModeSelectionScreenProps
             Detected system: <strong>{osName}</strong>
           </p>
           <p className="text-sm text-muted-foreground">
-            Automatically enabling "On this device" mode...
+            Recommended: On This Device
           </p>
+          <button
+            onClick={() => handleSelectMode("local")}
+            className="mt-4 w-full bg-[#67c1f5] hover:bg-[#4ba3d9] text-[#1b2838] font-bold py-3 px-6 rounded transition-colors"
+          >
+            Use "On This Device" Mode
+          </button>
         </div>
         <button 
           onClick={() => setDetectedAsSteamDeck(false)}
