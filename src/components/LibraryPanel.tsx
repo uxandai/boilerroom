@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RefreshCw, Trash2, FolderOpen, AlertCircle, Loader2, Search, Upload } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { listInstalledGames, listInstalledGamesLocal, fetchSteamGridDbArtwork, type InstalledGame } from "@/lib/api";
 import { CopyToRemoteModal } from "@/components/CopyToRemoteModal";
 
@@ -74,23 +74,42 @@ export function LibraryPanel() {
     }
   };
 
-  // Lazy load artworks one by one for immediate UI updates
+  // Lazy load artworks in batches for better performance while still providing UI updates
   const fetchArtworksLazy = async (gamesList: InstalledGame[]) => {
-    for (const game of gamesList) {
-      if (game.app_id && game.app_id !== "unknown") {
-        // Skip if already cached
-        if (artworkMap.has(game.app_id)) continue;
+    // Filter games that need artwork
+    const gamesToFetch = gamesList.filter(
+      game => game.app_id && game.app_id !== "unknown" && !artworkMap.has(game.app_id)
+    );
 
-        try {
-          const artwork = await fetchSteamGridDbArtwork(settings.steamGridDbApiKey, game.app_id);
-          if (artwork) {
-            // Update immediately for this game
-            setArtworkMap(prev => new Map(prev).set(game.app_id, artwork));
+    // Process in batches to balance concurrency and UI updates
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < gamesToFetch.length; i += BATCH_SIZE) {
+      const batch = gamesToFetch.slice(i, i + BATCH_SIZE);
+
+      // Fetch batch in parallel
+      const results = await Promise.all(
+        batch.map(async (game) => {
+          try {
+            const artwork = await fetchSteamGridDbArtwork(settings.steamGridDbApiKey, game.app_id);
+            return { appId: game.app_id, artwork };
+          } catch {
+            return { appId: game.app_id, artwork: null };
           }
-        } catch {
-          // Ignore artwork fetch errors
+        })
+      );
+
+      // Update state once per batch
+      setArtworkMap(prev => {
+        const next = new Map(prev);
+        let hasUpdates = false;
+        for (const { appId, artwork } of results) {
+          if (artwork) {
+            next.set(appId, artwork);
+            hasUpdates = true;
+          }
         }
-      }
+        return hasUpdates ? next : prev;
+      });
     }
   };
 
@@ -125,6 +144,10 @@ export function LibraryPanel() {
     if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
+
+  const filteredGames = useMemo(() => {
+    return games.filter(game => !showOnlyTonTonDeck || game.has_depotdownloader_marker);
+  }, [games, showOnlyTonTonDeck]);
 
   return (
     <div className="space-y-6">
@@ -189,9 +212,7 @@ export function LibraryPanel() {
 
           {games.length > 0 && (
             <div className="space-y-2">
-              {games
-                .filter(game => !showOnlyTonTonDeck || game.has_depotdownloader_marker)
-                .map((game) => (
+              {filteredGames.map((game) => (
                   <div
                     key={game.app_id}
                     className="bg-[#171a21] border border-[#0a0a0a] p-3 flex items-center justify-between hover:bg-[#1b2838] transition-colors"
