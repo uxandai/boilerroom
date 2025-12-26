@@ -60,10 +60,9 @@ export function LibraryPanel() {
 
       setGames(deduped);
 
-      // Fetch artwork from SteamGridDB if API key is set
-      // Only fetch for games that don't already have artwork cached
-      if (settings.steamGridDbApiKey) {
-        fetchArtworksLazy(deduped);
+      // Fetch artwork - check disk cache first, then SteamGridDB
+      if (settings.steamGridDbApiKey || true) { // Always try to load cached artwork
+        fetchArtworksWithCache(deduped);
       }
     } catch (e) {
       const errorMsg = `Error loading library: ${e}`;
@@ -74,21 +73,37 @@ export function LibraryPanel() {
     }
   };
 
-  // Lazy load artworks one by one for immediate UI updates
-  const fetchArtworksLazy = async (gamesList: InstalledGame[]) => {
+  // Load artworks with disk caching - check cache first, then fetch and cache
+  const fetchArtworksWithCache = async (gamesList: InstalledGame[]) => {
+    const { getCachedArtworkPath, cacheArtwork } = await import("@/lib/api");
+
     for (const game of gamesList) {
       if (game.app_id && game.app_id !== "unknown") {
-        // Skip if already cached
+        // Skip if already in memory
         if (artworkMap.has(game.app_id)) continue;
 
         try {
-          const artwork = await fetchSteamGridDbArtwork(settings.steamGridDbApiKey, game.app_id);
-          if (artwork) {
-            // Update immediately for this game
-            setArtworkMap(prev => new Map(prev).set(game.app_id, artwork));
+          // 1. Check disk cache first
+          const cachedPath = await getCachedArtworkPath(game.app_id);
+          if (cachedPath) {
+            // Use asset protocol to serve local file
+            const assetUrl = `asset://localhost/${cachedPath}`;
+            setArtworkMap(prev => new Map(prev).set(game.app_id, assetUrl));
+            continue;
+          }
+
+          // 2. No cache - fetch from SteamGridDB if API key available
+          if (settings.steamGridDbApiKey) {
+            const artwork = await fetchSteamGridDbArtwork(settings.steamGridDbApiKey, game.app_id);
+            if (artwork) {
+              // 3. Cache to disk
+              const localPath = await cacheArtwork(game.app_id, artwork);
+              const assetUrl = `asset://localhost/${localPath}`;
+              setArtworkMap(prev => new Map(prev).set(game.app_id, assetUrl));
+            }
           }
         } catch {
-          // Ignore artwork fetch errors
+          // Ignore artwork errors
         }
       }
     }

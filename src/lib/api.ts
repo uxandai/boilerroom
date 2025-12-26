@@ -310,6 +310,18 @@ export async function fetchSteamGridDbArtwork(
   return invoke<string | null>("fetch_steamgriddb_artwork", { apiKey, steamAppId });
 }
 
+// Artwork cache commands
+export async function cacheArtwork(appId: string, url: string): Promise<string> {
+  return invoke<string>("cache_artwork", { appId, url });
+}
+
+export async function getCachedArtworkPath(appId: string): Promise<string | null> {
+  return invoke<string | null>("get_cached_artwork_path", { appId });
+}
+
+export async function clearArtworkCache(): Promise<number> {
+  return invoke<number>("clear_artwork_cache");
+}
 // SLSsteam auto-fetch commands
 export async function fetchLatestSlssteam(): Promise<string> {
   return invoke<string>("fetch_latest_slssteam");

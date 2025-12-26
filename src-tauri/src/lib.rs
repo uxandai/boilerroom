@@ -109,6 +109,9 @@ pub fn run() {
             get_api_key,
             // SteamGridDB commands
             fetch_steamgriddb_artwork,
+            cache_artwork,
+            get_cached_artwork_path,
+            clear_artwork_cache,
             // SLSsteam auto-fetch commands
             fetch_latest_slssteam,
             get_cached_slssteam_version,

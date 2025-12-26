@@ -32,7 +32,6 @@ export function CopyToRemoteModal({ isOpen, onClose, game }: CopyToRemoteModalPr
     const [libraries, setLibraries] = useState<string[]>([]);
     const [selectedLibrary, setSelectedLibrary] = useState<string>("");
     const [isLoadingLibraries, setIsLoadingLibraries] = useState(false);
-    const [isCopying, setIsCopying] = useState(false);
 
     // Local SSH config for modal (in case global config is empty)
     const [localIp, setLocalIp] = useState("");
@@ -139,7 +138,9 @@ export function CopyToRemoteModal({ isOpen, onClose, game }: CopyToRemoteModalPr
     const handleCopy = async () => {
         if (!game || !selectedLibrary) return;
 
-        setIsCopying(true);
+        // Close dialog immediately - copy continues in background
+        onClose();
+
         addLog("info", `Starting copy of ${game.name} to remote: ${selectedLibrary}`);
 
         try {
@@ -165,7 +166,6 @@ export function CopyToRemoteModal({ isOpen, onClose, game }: CopyToRemoteModalPr
             await copyGameToRemote(sshConfig, game.path, targetPath, game.app_id, game.name);
 
             addLog("info", `Successfully copied ${game.name} to Steam Deck`);
-            onClose();
         } catch (error) {
             addLog("error", `Copy failed: ${error}`);
             setInstallProgress({
@@ -182,8 +182,6 @@ export function CopyToRemoteModal({ isOpen, onClose, game }: CopyToRemoteModalPr
                 transferSpeed: "",
                 error: `Copy failed: ${error}`
             });
-        } finally {
-            setIsCopying(false);
         }
     };
 
@@ -191,26 +189,26 @@ export function CopyToRemoteModal({ isOpen, onClose, game }: CopyToRemoteModalPr
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-[#1b2838] border-[#0a0a0a] max-w-lg">
+            <DialogContent className="bg-[#1b2838] border-[#0a0a0a] max-w-md w-full overflow-hidden">
                 <DialogHeader>
-                    <DialogTitle className="text-white flex items-center gap-2">
-                        <Upload className="w-5 h-5" />
-                        Copy to Steam Deck: {game.name}
+                    <DialogTitle className="text-white flex items-center gap-2 pr-6">
+                        <Upload className="w-5 h-5 flex-shrink-0" />
+                        <span className="truncate">Copy to Steam Deck: {game.name}</span>
                     </DialogTitle>
                 </DialogHeader>
 
-                <div className="space-y-4 py-4">
+                <div className="space-y-4 py-4 overflow-hidden">
                     {/* Game Info */}
-                    <div className="bg-[#171a21] border border-[#0a0a0a] p-3 flex items-center gap-3">
-                        <div className="w-16 h-16 bg-[#2a475e] rounded flex items-center justify-center">
-                            <FolderOpen className="w-8 h-8 text-muted-foreground" />
+                    <div className="bg-[#171a21] border border-[#0a0a0a] p-3 flex items-center gap-3 overflow-hidden">
+                        <div className="w-14 h-14 bg-[#2a475e] rounded flex items-center justify-center flex-shrink-0">
+                            <FolderOpen className="w-6 h-6 text-muted-foreground" />
                         </div>
-                        <div>
-                            <p className="font-medium text-white">{game.name}</p>
+                        <div className="min-w-0 flex-1">
+                            <p className="font-medium text-white truncate">{game.name}</p>
                             <p className="text-sm text-muted-foreground">
                                 AppID: {game.app_id} • {formatSize(game.size_bytes)}
                             </p>
-                            <p className="text-xs text-muted-foreground truncate max-w-sm" title={game.path}>
+                            <p className="text-xs text-muted-foreground truncate" title={game.path}>
                                 From: {game.path}
                             </p>
                         </div>
@@ -345,20 +343,11 @@ export function CopyToRemoteModal({ isOpen, onClose, game }: CopyToRemoteModalPr
                     </Button>
                     <Button
                         onClick={handleCopy}
-                        disabled={!isConnected || !selectedLibrary || isCopying}
+                        disabled={!isConnected || !selectedLibrary}
                         className="btn-steam"
                     >
-                        {isCopying ? (
-                            <>
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                Copying...
-                            </>
-                        ) : (
-                            <>
-                                <Upload className="w-4 h-4 mr-2" />
-                                Copy to Steam Deck
-                            </>
-                        )}
+                        <Upload className="w-4 h-4 mr-2" />
+                        Copy to Steam Deck
                     </Button>
                 </DialogFooter>
             </DialogContent>

@@ -307,6 +307,98 @@ pub async fn fetch_steamgriddb_artwork(
     }
 }
 
+/// Get artwork cache directory
+fn get_artwork_cache_dir() -> Result<PathBuf, String> {
+    let cache_dir = dirs::cache_dir()
+        .ok_or("Failed to find cache directory")?
+        .join("tontondeck")
+        .join("artwork");
+
+    std::fs::create_dir_all(&cache_dir)
+        .map_err(|e| format!("Failed to create artwork cache dir: {}", e))?;
+
+    Ok(cache_dir)
+}
+
+/// Cache artwork image to disk
+/// Downloads the image from URL and saves it locally
+#[tauri::command]
+pub async fn cache_artwork(app_id: String, url: String) -> Result<String, String> {
+    let cache_dir = get_artwork_cache_dir()?;
+
+    // Determine file extension from URL
+    let ext = if url.contains(".png") {
+        "png"
+    } else if url.contains(".webp") {
+        "webp"
+    } else {
+        "jpg" // Default to jpg
+    };
+
+    let cache_path = cache_dir.join(format!("{}.{}", app_id, ext));
+
+    // Download the image
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to download artwork: {}", e))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Failed to download artwork: HTTP {}",
+            response.status()
+        ));
+    }
+
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Failed to read artwork bytes: {}", e))?;
+
+    std::fs::write(&cache_path, &bytes).map_err(|e| format!("Failed to save artwork: {}", e))?;
+
+    eprintln!("[ArtworkCache] Cached {} -> {:?}", app_id, cache_path);
+
+    Ok(cache_path.to_string_lossy().to_string())
+}
+
+/// Get cached artwork path if it exists
+#[tauri::command]
+pub async fn get_cached_artwork_path(app_id: String) -> Result<Option<String>, String> {
+    let cache_dir = get_artwork_cache_dir()?;
+
+    // Check for any cached file with this app_id
+    for ext in &["jpg", "png", "webp"] {
+        let cache_path = cache_dir.join(format!("{}.{}", app_id, ext));
+        if cache_path.exists() {
+            return Ok(Some(cache_path.to_string_lossy().to_string()));
+        }
+    }
+
+    Ok(None)
+}
+
+/// Clear all cached artwork
+#[tauri::command]
+pub async fn clear_artwork_cache() -> Result<usize, String> {
+    let cache_dir = get_artwork_cache_dir()?;
+
+    let mut count = 0;
+    if let Ok(entries) = std::fs::read_dir(&cache_dir) {
+        for entry in entries.flatten() {
+            if entry.path().is_file() {
+                let _ = std::fs::remove_file(entry.path());
+                count += 1;
+            }
+        }
+    }
+
+    eprintln!("[ArtworkCache] Cleared {} cached images", count);
+    Ok(count)
+}
+
 // ============================================================================
 // DOWNLOAD COMMANDS
 // ============================================================================
