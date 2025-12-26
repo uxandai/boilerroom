@@ -9,15 +9,22 @@ import { ModeSelectionScreen } from "@/components/ModeSelectionScreen";
 import { useAppStore } from "@/store/useAppStore";
 import { getApiKey, loadConnectionMode } from "@/lib/api";
 import { Power } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import "./index.css";
 
 function App() {
   const { setSettings, setSshConfig, activeTab, setActiveTab, setConnectionMode, triggerLibraryRefresh } = useAppStore();
   const [showModeSelection, setShowModeSelection] = useState<boolean | null>(null);
 
+  // Track if initialization has occurred (prevents StrictMode double-call)
+  const hasInitializedRef = useRef(false);
+
   // Load saved settings on startup
   useEffect(() => {
+    // Prevent duplicate initialization from React StrictMode
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
+
     const loadSettings = async () => {
       try {
         // Check if mode was already selected

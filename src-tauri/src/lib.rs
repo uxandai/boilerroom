@@ -14,32 +14,32 @@ pub fn run() {
     // WebKit has issues with Wayland on many distros (Arch, SteamOS, etc.)
     #[cfg(target_os = "linux")]
     {
-        // Always set these for maximum compatibility (especially Steam Deck AMD GPU)
-        // These must be set unconditionally to avoid EGL_BAD_PARAMETER errors
-        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
-        std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
-        std::env::set_var("WEBKIT_FORCE_SANDBOX", "0");
-
         // Check if running on Wayland
         let is_wayland = std::env::var("XDG_SESSION_TYPE")
             .map(|v| v == "wayland")
             .unwrap_or(false)
             || std::env::var("WAYLAND_DISPLAY").is_ok();
 
-        // Check if SteamOS specifically
+        // Check if SteamOS specifically (Steam Deck Gaming Mode has known WebKit issues)
         let is_steamos = std::path::Path::new("/etc/steamos-release").exists();
 
-        if is_wayland || is_steamos {
+        // Apply WebKit fixes for Wayland (DMABUF renderer causes protocol errors)
+        if is_wayland {
             eprintln!(
-                "[Tauri] Wayland/SteamOS detected, forcing X11 backend for WebKit compatibility"
+                "[Tauri] Wayland detected, disabling DMABUF renderer for WebKit compatibility"
             );
-            std::env::set_var("GDK_BACKEND", "x11");
+            std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+        }
 
+        // SteamOS needs more aggressive fixes
+        if is_steamos {
+            eprintln!("[Tauri] SteamOS detected, applying full WebKit compatibility fixes");
+            std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+            std::env::set_var("WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS", "1");
+            // Force X11 backend for WebKit compatibility on SteamOS
+            std::env::set_var("GDK_BACKEND", "x11");
             // Software rendering fallback for AMD GPU (Steam Deck)
-            if is_steamos {
-                eprintln!("[Tauri] SteamOS detected, enabling software rendering fallback");
-                std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
-            }
+            std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
         }
     }
 
@@ -113,6 +113,11 @@ pub fn run() {
             fetch_latest_slssteam,
             get_cached_slssteam_version,
             get_cached_slssteam_path,
+            // Steam update disable and libcurl fix commands
+            disable_steam_updates,
+            fix_libcurl32,
+            check_steam_updates_status,
+            check_libcurl32_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

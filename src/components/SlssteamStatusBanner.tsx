@@ -32,7 +32,7 @@ export function SlssteamStatusBanner() {
       try {
         const { verifySlssteamLocal } = await import("@/lib/api");
         const localStatus = await verifySlssteamLocal();
-        
+
         if (localStatus.slssteam_so_exists && localStatus.config_exists) {
           setStatus({
             isLoading: false,
@@ -44,7 +44,7 @@ export function SlssteamStatusBanner() {
           const missing: string[] = [];
           if (!localStatus.slssteam_so_exists) missing.push("SLSsteam.so");
           if (!localStatus.config_exists) missing.push("config.yaml");
-          
+
           setStatus({
             isLoading: false,
             isConfigured: false,
@@ -100,7 +100,7 @@ export function SlssteamStatusBanner() {
           if (!remoteStatus.slssteam_so_exists) missing.push("SLSsteam.so");
           if (!remoteStatus.config_exists) missing.push("config.yaml");
           if (!remoteStatus.config_play_not_owned) missing.push("PlayNotOwnedGames");
-          
+
           setStatus({
             isLoading: false,
             isConfigured: false,
@@ -120,8 +120,14 @@ export function SlssteamStatusBanner() {
     }
   }, [connectionMode, connectionStatus, sshConfig, addLog]);
 
+  // Track if initial check has been done (prevents StrictMode double-call)
+  const hasInitializedRef = useRef(false);
+
   // Initial check
   useEffect(() => {
+    // Prevent duplicate calls from StrictMode
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
     checkStatus();
   }, [checkStatus]);
 
@@ -191,18 +197,18 @@ export function SlssteamStatusBanner() {
           )}
         </div>
       </div>
-      <Button 
-        size="sm" 
-        variant="ghost" 
+      <Button
+        size="sm"
+        variant="ghost"
         onClick={handleManualRefresh}
         className="text-yellow-400 hover:text-yellow-300 hover:bg-[#8f4040]/20 flex-shrink-0 px-2"
         title="Refresh now"
       >
         <RefreshCw className="w-4 h-4" />
       </Button>
-      <Button 
-        size="sm" 
-        variant="outline" 
+      <Button
+        size="sm"
+        variant="outline"
         onClick={goToSettings}
         className="border-[#8f4040] text-white hover:bg-[#8f4040]/20 flex-shrink-0"
       >

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::Emitter;
@@ -2493,6 +2493,7 @@ pub struct SlssteamLocalStatus {
     pub config_exists: bool,
     pub config_play_not_owned: bool,
     pub additional_apps_count: usize,
+    pub desktop_entry_patched: bool,
 }
 
 /// Verify SLSsteam installation status on local machine (for running on Steam Deck itself)
@@ -2543,9 +2544,35 @@ pub async fn verify_slssteam_local() -> Result<SlssteamLocalStatus, String> {
         (false, 0)
     };
 
+    // Check if steam.desktop is patched with LD_AUDIT
+    let desktop_path = home.join(".local/share/applications/steam.desktop");
+    let desktop_entry_patched = if desktop_path.exists() {
+        if let Ok(content) = std::fs::read_to_string(&desktop_path) {
+            let patched = content.contains("LD_AUDIT");
+            eprintln!(
+                "[SLSsteam Local Verify] steam.desktop path: {:?}, exists: true, patched (LD_AUDIT): {}",
+                desktop_path, patched
+            );
+            if !patched {
+                // Log some context about what we're looking for
+                eprintln!("[SLSsteam Local Verify] Expected: Exec line should contain LD_AUDIT=path/to/SLSsteam.so");
+            }
+            patched
+        } else {
+            eprintln!("[SLSsteam Local Verify] steam.desktop exists but could not read");
+            false
+        }
+    } else {
+        eprintln!(
+            "[SLSsteam Local Verify] steam.desktop not found at: {:?}",
+            desktop_path
+        );
+        false
+    };
+
     eprintln!(
-        "[SLSsteam Local Verify] === RESULT: so={}, config={}, play_not_owned={}, apps={} ===",
-        slssteam_so_exists, config_exists, config_play_not_owned, additional_apps_count
+        "[SLSsteam Local Verify] === RESULT: so={}, config={}, play_not_owned={}, apps={}, desktop_patched={} ===",
+        slssteam_so_exists, config_exists, config_play_not_owned, additional_apps_count, desktop_entry_patched
     );
 
     Ok(SlssteamLocalStatus {
@@ -2553,6 +2580,7 @@ pub async fn verify_slssteam_local() -> Result<SlssteamLocalStatus, String> {
         config_exists,
         config_play_not_owned,
         additional_apps_count,
+        desktop_entry_patched,
     })
 }
 
@@ -3621,6 +3649,427 @@ pub async fn copy_game_to_remote(
     );
 
     Ok(())
+}
+
+// ============================================================================
+// STEAM UPDATE DISABLE AND LIBCURL FIX COMMANDS
+// ============================================================================
+
+/// Disable Steam updates to prevent hash mismatch with SLSsteam
+/// Creates/modifies $HOME/.steam/steam/steam.cfg
+#[tauri::command]
+pub async fn disable_steam_updates(config: SshConfig) -> Result<String, String> {
+    let config_content = r#"BootStrapperInhibitAll=enable
+BootStrapperForceSelfUpdate=disable
+"#;
+
+    // Check if local mode
+    if config.is_local || config.ip.is_empty() {
+        // Local mode
+        let home = std::env::var("HOME")
+            .map_err(|_| "Could not get HOME environment variable".to_string())?;
+
+        let steam_dir = PathBuf::from(&home).join(".steam/steam");
+        let config_path = steam_dir.join("steam.cfg");
+
+        // Create directory if it doesn't exist
+        std::fs::create_dir_all(&steam_dir)
+            .map_err(|e| format!("Failed to create steam directory: {}", e))?;
+
+        // Read existing config if it exists
+        let existing_content = if config_path.exists() {
+            std::fs::read_to_string(&config_path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        // Check if already configured correctly
+        let has_inhibit = existing_content.contains("BootStrapperInhibitAll=enable");
+        let has_force_disable = existing_content.contains("BootStrapperForceSelfUpdate=disable");
+
+        if has_inhibit && has_force_disable {
+            return Ok("Steam update disable already configured. No changes needed.".to_string());
+        }
+
+        // Build new content
+        let mut new_content = existing_content.clone();
+
+        // Remove old values if they exist with different settings
+        new_content = new_content
+            .lines()
+            .filter(|line| {
+                !line.starts_with("BootStrapperInhibitAll=")
+                    && !line.starts_with("BootStrapperForceSelfUpdate=")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        // Add our settings
+        if !new_content.is_empty() && !new_content.ends_with('\n') {
+            new_content.push('\n');
+        }
+        new_content.push_str(config_content);
+
+        std::fs::write(&config_path, &new_content)
+            .map_err(|e| format!("Failed to write steam.cfg: {}", e))?;
+
+        return Ok(format!(
+            "Steam updates disabled locally.\nModified: {}\n\nContent:\n{}",
+            config_path.display(),
+            new_content.trim()
+        ));
+    }
+
+    // Remote mode via SSH
+    if config.ip.is_empty() {
+        return Err("IP address is required for remote mode".to_string());
+    }
+
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP address: {}", config.ip))?;
+    let addr = SocketAddr::new(ip, config.port);
+
+    let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    let mut sess =
+        ssh2::Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
+
+    sess.set_tcp_stream(tcp);
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
+
+    sess.userauth_password(&config.username, &config.password)
+        .map_err(|e| format!("SSH auth failed: {}", e))?;
+
+    // Create directory and write config
+    let cmd = format!(
+        r#"
+mkdir -p ~/.steam/steam
+CONFIG_FILE="$HOME/.steam/steam/steam.cfg"
+
+# Remove old lines if they exist
+if [ -f "$CONFIG_FILE" ]; then
+    sed -i '/^BootStrapperInhibitAll=/d' "$CONFIG_FILE"
+    sed -i '/^BootStrapperForceSelfUpdate=/d' "$CONFIG_FILE"
+fi
+
+# Append new settings
+echo 'BootStrapperInhibitAll=enable' >> "$CONFIG_FILE"
+echo 'BootStrapperForceSelfUpdate=disable' >> "$CONFIG_FILE"
+
+echo "Steam updates disabled."
+cat "$CONFIG_FILE"
+"#
+    );
+
+    let output = ssh_exec(&sess, &cmd)?;
+
+    Ok(format!(
+        "Steam updates disabled on remote Steam Deck.\n\n{}",
+        output.trim()
+    ))
+}
+
+/// Fix libcurl32 symlink issue for Steam
+/// Creates: ln -sf /usr/lib32/libcurl.so.4 ~/.steam/steam/ubuntu12_32/libcurl.so.4
+#[tauri::command]
+pub async fn fix_libcurl32(config: SshConfig) -> Result<String, String> {
+    use std::os::unix::fs::symlink;
+
+    let source = "/usr/lib32/libcurl.so.4";
+
+    // Check if local mode
+    if config.is_local || config.ip.is_empty() {
+        // Local mode
+        let home = std::env::var("HOME")
+            .map_err(|_| "Could not get HOME environment variable".to_string())?;
+
+        let target_dir = PathBuf::from(&home).join(".steam/steam/ubuntu12_32");
+        let target = target_dir.join("libcurl.so.4");
+
+        // Check if source exists
+        if !PathBuf::from(source).exists() {
+            return Err(format!(
+                "Source library not found: {}\n\nMake sure lib32-curl is installed:\n  sudo pacman -S lib32-curl",
+                source
+            ));
+        }
+
+        // Create target directory if it doesn't exist
+        std::fs::create_dir_all(&target_dir)
+            .map_err(|e| format!("Failed to create target directory: {}", e))?;
+
+        // Remove existing symlink/file if it exists
+        if target.exists() || target.symlink_metadata().is_ok() {
+            std::fs::remove_file(&target)
+                .map_err(|e| format!("Failed to remove existing file: {}", e))?;
+        }
+
+        // Create symlink
+        symlink(source, &target).map_err(|e| format!("Failed to create symlink: {}", e))?;
+
+        return Ok(format!(
+            "libcurl32 symlink created successfully.\n\n{} -> {}",
+            target.display(),
+            source
+        ));
+    }
+
+    // Remote mode via SSH
+    if config.ip.is_empty() {
+        return Err("IP address is required for remote mode".to_string());
+    }
+
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP address: {}", config.ip))?;
+    let addr = SocketAddr::new(ip, config.port);
+
+    let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    let mut sess =
+        ssh2::Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
+
+    sess.set_tcp_stream(tcp);
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
+
+    sess.userauth_password(&config.username, &config.password)
+        .map_err(|e| format!("SSH auth failed: {}", e))?;
+
+    // Check if source exists, create dir, and create symlink
+    let cmd = format!(
+        r#"
+# Check if lib32-curl is installed
+if [ ! -f "{source}" ]; then
+    echo "ERROR: {source} not found"
+    echo "Make sure lib32-curl is installed: sudo pacman -S lib32-curl"
+    exit 1
+fi
+
+# Create directory if needed
+mkdir -p ~/.steam/steam/ubuntu12_32
+
+# Create symlink (force overwrite)
+ln -sf "{source}" ~/.steam/steam/ubuntu12_32/libcurl.so.4
+
+echo "Symlink created successfully:"
+ls -la ~/.steam/steam/ubuntu12_32/libcurl.so.4
+"#,
+        source = source
+    );
+
+    let output = ssh_exec(&sess, &cmd)?;
+
+    if output.contains("ERROR:") {
+        return Err(output);
+    }
+
+    Ok(format!(
+        "libcurl32 symlink created on remote Steam Deck.\n\n{}",
+        output.trim()
+    ))
+}
+
+/// Status of Steam updates configuration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SteamUpdatesStatus {
+    pub is_configured: bool,
+    pub inhibit_all: bool,
+    pub force_self_update_disabled: bool,
+    pub config_path: String,
+}
+
+/// Check if Steam updates are disabled
+#[tauri::command]
+pub async fn check_steam_updates_status(config: SshConfig) -> Result<SteamUpdatesStatus, String> {
+    // Check if local mode
+    if config.is_local || config.ip.is_empty() {
+        // Local mode
+        let home = std::env::var("HOME")
+            .map_err(|_| "Could not get HOME environment variable".to_string())?;
+
+        let config_path = PathBuf::from(&home).join(".steam/steam/steam.cfg");
+
+        if !config_path.exists() {
+            return Ok(SteamUpdatesStatus {
+                is_configured: false,
+                inhibit_all: false,
+                force_self_update_disabled: false,
+                config_path: config_path.to_string_lossy().to_string(),
+            });
+        }
+
+        let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+        let inhibit_all = content.contains("BootStrapperInhibitAll=enable");
+        let force_self_update_disabled = content.contains("BootStrapperForceSelfUpdate=disable");
+
+        return Ok(SteamUpdatesStatus {
+            is_configured: inhibit_all && force_self_update_disabled,
+            inhibit_all,
+            force_self_update_disabled,
+            config_path: config_path.to_string_lossy().to_string(),
+        });
+    }
+
+    // Remote mode via SSH
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP address: {}", config.ip))?;
+    let addr = SocketAddr::new(ip, config.port);
+
+    let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    let mut sess =
+        ssh2::Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
+
+    sess.set_tcp_stream(tcp);
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
+
+    sess.userauth_password(&config.username, &config.password)
+        .map_err(|e| format!("SSH auth failed: {}", e))?;
+
+    let output = ssh_exec(
+        &sess,
+        "cat ~/.steam/steam/steam.cfg 2>/dev/null || echo 'FILE_NOT_FOUND'",
+    )?;
+
+    if output.contains("FILE_NOT_FOUND") {
+        return Ok(SteamUpdatesStatus {
+            is_configured: false,
+            inhibit_all: false,
+            force_self_update_disabled: false,
+            config_path: "~/.steam/steam/steam.cfg".to_string(),
+        });
+    }
+
+    let inhibit_all = output.contains("BootStrapperInhibitAll=enable");
+    let force_self_update_disabled = output.contains("BootStrapperForceSelfUpdate=disable");
+
+    Ok(SteamUpdatesStatus {
+        is_configured: inhibit_all && force_self_update_disabled,
+        inhibit_all,
+        force_self_update_disabled,
+        config_path: "~/.steam/steam/steam.cfg".to_string(),
+    })
+}
+
+/// Status of libcurl32 symlink
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Libcurl32Status {
+    pub source_exists: bool,
+    pub symlink_exists: bool,
+    pub symlink_correct: bool,
+    pub source_path: String,
+    pub target_path: String,
+}
+
+/// Check libcurl32 symlink status
+#[tauri::command]
+pub async fn check_libcurl32_status(config: SshConfig) -> Result<Libcurl32Status, String> {
+    let source = "/usr/lib32/libcurl.so.4";
+
+    // Check if local mode
+    if config.is_local || config.ip.is_empty() {
+        // Local mode
+        let home = std::env::var("HOME")
+            .map_err(|_| "Could not get HOME environment variable".to_string())?;
+
+        let target_path = PathBuf::from(&home).join(".steam/steam/ubuntu12_32/libcurl.so.4");
+        let source_exists = PathBuf::from(source).exists();
+
+        // Check if symlink exists and points to correct target
+        let (symlink_exists, symlink_correct) = if target_path.symlink_metadata().is_ok() {
+            if let Ok(link_target) = std::fs::read_link(&target_path) {
+                (true, link_target == PathBuf::from(source))
+            } else {
+                // File exists but is not a symlink
+                (true, false)
+            }
+        } else {
+            (false, false)
+        };
+
+        return Ok(Libcurl32Status {
+            source_exists,
+            symlink_exists,
+            symlink_correct,
+            source_path: source.to_string(),
+            target_path: target_path.to_string_lossy().to_string(),
+        });
+    }
+
+    // Remote mode via SSH
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP address: {}", config.ip))?;
+    let addr = SocketAddr::new(ip, config.port);
+
+    let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    let mut sess =
+        ssh2::Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
+
+    sess.set_tcp_stream(tcp);
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
+
+    sess.userauth_password(&config.username, &config.password)
+        .map_err(|e| format!("SSH auth failed: {}", e))?;
+
+    // Check source and symlink status
+    let cmd = format!(
+        r#"
+SOURCE_EXISTS="false"
+SYMLINK_EXISTS="false"
+SYMLINK_CORRECT="false"
+
+if [ -f "{source}" ]; then
+    SOURCE_EXISTS="true"
+fi
+
+TARGET="$HOME/.steam/steam/ubuntu12_32/libcurl.so.4"
+
+if [ -L "$TARGET" ]; then
+    SYMLINK_EXISTS="true"
+    LINK_TARGET=$(readlink "$TARGET")
+    if [ "$LINK_TARGET" = "{source}" ]; then
+        SYMLINK_CORRECT="true"
+    fi
+elif [ -f "$TARGET" ]; then
+    SYMLINK_EXISTS="true"
+fi
+
+echo "SOURCE_EXISTS=$SOURCE_EXISTS"
+echo "SYMLINK_EXISTS=$SYMLINK_EXISTS"
+echo "SYMLINK_CORRECT=$SYMLINK_CORRECT"
+"#,
+        source = source
+    );
+
+    let output = ssh_exec(&sess, &cmd)?;
+
+    let source_exists = output.contains("SOURCE_EXISTS=true");
+    let symlink_exists = output.contains("SYMLINK_EXISTS=true");
+    let symlink_correct = output.contains("SYMLINK_CORRECT=true");
+
+    Ok(Libcurl32Status {
+        source_exists,
+        symlink_exists,
+        symlink_correct,
+        source_path: source.to_string(),
+        target_path: "~/.steam/steam/ubuntu12_32/libcurl.so.4".to_string(),
+    })
 }
 
 #[cfg(test)]

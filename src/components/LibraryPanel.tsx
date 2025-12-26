@@ -43,11 +43,27 @@ export function LibraryPanel() {
         addLog("info", `[REMOTE] Found ${installedGames.length} installed games`);
       }
 
-      setGames(installedGames);
+      // Deduplicate games by app_id (Steam paths may be symlinked)
+      const uniqueGames = installedGames.reduce((acc, game) => {
+        // Use app_id as key, but fallback to path for unknown app_ids
+        const key = game.app_id !== "unknown" ? game.app_id : game.path;
+        if (!acc.has(key)) {
+          acc.set(key, game);
+        }
+        return acc;
+      }, new Map<string, InstalledGame>());
+
+      const deduped = Array.from(uniqueGames.values());
+      if (deduped.length < installedGames.length) {
+        addLog("info", `Deduplicated ${installedGames.length - deduped.length} duplicate entries`);
+      }
+
+      setGames(deduped);
 
       // Fetch artwork from SteamGridDB if API key is set
+      // Only fetch for games that don't already have artwork cached
       if (settings.steamGridDbApiKey) {
-        fetchArtworks(installedGames);
+        fetchArtworksLazy(deduped);
       }
     } catch (e) {
       const errorMsg = `Error loading library: ${e}`;
@@ -58,35 +74,40 @@ export function LibraryPanel() {
     }
   };
 
-  const fetchArtworks = async (gamesList: InstalledGame[]) => {
-    const newArtwork = new Map<string, string>();
-
+  // Lazy load artworks one by one for immediate UI updates
+  const fetchArtworksLazy = async (gamesList: InstalledGame[]) => {
     for (const game of gamesList) {
       if (game.app_id && game.app_id !== "unknown") {
+        // Skip if already cached
+        if (artworkMap.has(game.app_id)) continue;
+
         try {
           const artwork = await fetchSteamGridDbArtwork(settings.steamGridDbApiKey, game.app_id);
           if (artwork) {
-            newArtwork.set(game.app_id, artwork);
+            // Update immediately for this game
+            setArtworkMap(prev => new Map(prev).set(game.app_id, artwork));
           }
         } catch {
           // Ignore artwork fetch errors
         }
       }
     }
-
-    setArtworkMap(newArtwork);
-    addLog("info", `Downloaded ${newArtwork.size} covers from SteamGridDB`);
   };
 
   // Track if games have been loaded
   const hasLoadedRef = useRef(false);
+  // Track if refresh is in progress (prevents duplicate calls from StrictMode)
+  const isRefreshingRef = useRef(false);
 
   // Auto-refresh when libraryNeedsRefresh flag is set (by App.tsx on mode change/connect)
   useEffect(() => {
-    if (libraryNeedsRefresh) {
+    if (libraryNeedsRefresh && !isRefreshingRef.current) {
       // Clear the flag first via direct store update
       useAppStore.setState({ libraryNeedsRefresh: false });
-      refreshGames();
+      isRefreshingRef.current = true;
+      refreshGames().finally(() => {
+        isRefreshingRef.current = false;
+      });
     }
   }, [libraryNeedsRefresh]);
 

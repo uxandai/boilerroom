@@ -329,6 +329,7 @@ export interface SlssteamLocalStatus {
   config_exists: boolean;
   config_play_not_owned: boolean;
   additional_apps_count: number;
+  desktop_entry_patched: boolean;
 }
 
 export async function verifySlssteamLocal(): Promise<SlssteamLocalStatus> {
@@ -372,4 +373,39 @@ export async function clearConnectionMode(): Promise<void> {
 // Check if sshpass is available (needed for rsync password auth)
 export async function checkSshpassAvailable(): Promise<boolean> {
   return invoke<boolean>("check_sshpass_available");
+}
+
+// Disable Steam updates to prevent SLSsteam hash mismatch
+export async function disableSteamUpdates(config: SshConfig): Promise<string> {
+  return invoke<string>("disable_steam_updates", { config });
+}
+
+// Fix libcurl32 symlink for Steam
+export async function fixLibcurl32(config: SshConfig): Promise<string> {
+  return invoke<string>("fix_libcurl32", { config });
+}
+
+// Steam updates status
+export interface SteamUpdatesStatus {
+  is_configured: boolean;
+  inhibit_all: boolean;
+  force_self_update_disabled: boolean;
+  config_path: string;
+}
+
+export async function checkSteamUpdatesStatus(config: SshConfig): Promise<SteamUpdatesStatus> {
+  return invoke<SteamUpdatesStatus>("check_steam_updates_status", { config });
+}
+
+// libcurl32 symlink status
+export interface Libcurl32Status {
+  source_exists: boolean;
+  symlink_exists: boolean;
+  symlink_correct: boolean;
+  source_path: string;
+  target_path: string;
+}
+
+export async function checkLibcurl32Status(config: SshConfig): Promise<Libcurl32Status> {
+  return invoke<Libcurl32Status>("check_libcurl32_status", { config });
 }

@@ -44,6 +44,20 @@ export function SettingsPanel() {
     desktop_entry_patched: boolean;
     additional_apps_count: number;
   } | null>(null);
+  // Steam updates status
+  const [steamUpdatesStatus, setSteamUpdatesStatus] = useState<{
+    is_configured: boolean;
+    inhibit_all: boolean;
+    force_self_update_disabled: boolean;
+  } | null>(null);
+  const [isCheckingSteamUpdates, setIsCheckingSteamUpdates] = useState(false);
+  // libcurl32 status
+  const [libcurl32Status, setLibcurl32Status] = useState<{
+    source_exists: boolean;
+    symlink_exists: boolean;
+    symlink_correct: boolean;
+  } | null>(null);
+  const [isCheckingLibcurl32, setIsCheckingLibcurl32] = useState(false);
 
   // Save API key to secure storage
   const handleSaveApiKey = async () => {
@@ -225,19 +239,20 @@ export function SettingsPanel() {
 
         // Adapt local status to verifyStatus format (some fields not available locally)
         setVerifyStatus({
-          is_readonly: false, // Can't check remotely, assume false locally
+          is_readonly: false, // Not relevant locally
           slssteam_so_exists: status.slssteam_so_exists,
           config_exists: status.config_exists,
           config_play_not_owned: status.config_play_not_owned,
-          config_safe_mode_on: false, // Not checked locally
-          steam_jupiter_patched: false, // Not checked locally
-          desktop_entry_patched: false, // Not checked locally
+          config_safe_mode_on: false, // SteamOS only
+          steam_jupiter_patched: false, // SteamOS only
+          desktop_entry_patched: status.desktop_entry_patched,
           additional_apps_count: status.additional_apps_count,
         });
 
         addLog("info", `[LOCAL] SLSsteam.so: ${status.slssteam_so_exists ? "✅" : "❌"}`);
         addLog("info", `[LOCAL] config.yaml: ${status.config_exists ? "✅" : "❌"}`);
         addLog("info", `[LOCAL] PlayNotOwnedGames: ${status.config_play_not_owned ? "✅" : "❌"}`);
+        addLog("info", `[LOCAL] Desktop entry (LD_AUDIT): ${status.desktop_entry_patched ? "✅" : "❌"}`);
         addLog("info", `[LOCAL] Registered games: ${status.additional_apps_count}`);
       } else {
         // Use remote SSH verification
@@ -677,9 +692,12 @@ export function SettingsPanel() {
           {verifyStatus && (
             <div className="bg-[#171a21] border border-[#0a0a0a] p-3 space-y-2 text-sm">
               <div className="grid grid-cols-2 gap-2">
-                <div className={verifyStatus.is_readonly ? "text-red-400" : "text-green-400"}>
-                  {verifyStatus.is_readonly ? "❌" : "✅"} Read-only: {verifyStatus.is_readonly ? "YES" : "NO"}
-                </div>
+                {/* Read-only is only relevant for SteamOS/remote */}
+                {connectionMode === "remote" && (
+                  <div className={verifyStatus.is_readonly ? "text-red-400" : "text-green-400"}>
+                    {verifyStatus.is_readonly ? "❌" : "✅"} Read-only: {verifyStatus.is_readonly ? "YES" : "NO"}
+                  </div>
+                )}
                 <div className={verifyStatus.slssteam_so_exists ? "text-green-400" : "text-red-400"}>
                   {verifyStatus.slssteam_so_exists ? "✅" : "❌"} SLSsteam.so
                 </div>
@@ -689,21 +707,250 @@ export function SettingsPanel() {
                 <div className={verifyStatus.config_play_not_owned ? "text-green-400" : "text-red-400"}>
                   {verifyStatus.config_play_not_owned ? "✅" : "❌"} PlayNotOwnedGames
                 </div>
-                <div className={verifyStatus.config_safe_mode_on ? "text-green-400" : "text-red-400"}>
-                  {verifyStatus.config_safe_mode_on ? "✅" : "❌"} SafeMode
-                </div>
-                <div className={verifyStatus.steam_jupiter_patched ? "text-green-400" : "text-red-400"}>
-                  {verifyStatus.steam_jupiter_patched ? "✅" : "❌"} steam-jupiter
-                </div>
-                <div className={verifyStatus.desktop_entry_patched ? "text-green-400" : "text-red-400"}>
-                  {verifyStatus.desktop_entry_patched ? "✅" : "❌"} Desktop entry
-                </div>
+                {/* SafeMode, steam-jupiter, Desktop entry are SteamOS-specific */}
+                {connectionMode === "remote" ? (
+                  <>
+                    <div className={verifyStatus.config_safe_mode_on ? "text-green-400" : "text-red-400"}>
+                      {verifyStatus.config_safe_mode_on ? "✅" : "❌"} SafeMode
+                    </div>
+                    <div className={verifyStatus.steam_jupiter_patched ? "text-green-400" : "text-red-400"}>
+                      {verifyStatus.steam_jupiter_patched ? "✅" : "❌"} steam-jupiter
+                    </div>
+                    <div className={verifyStatus.desktop_entry_patched ? "text-green-400" : "text-red-400"}>
+                      {verifyStatus.desktop_entry_patched ? "✅" : "❌"} Desktop entry
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-gray-500">
+                      ➖ SafeMode (SteamOS only)
+                    </div>
+                    <div className="text-gray-500">
+                      ➖ steam-jupiter (SteamOS only)
+                    </div>
+                    <div className={verifyStatus.desktop_entry_patched ? "text-green-400" : "text-red-400"}>
+                      {verifyStatus.desktop_entry_patched ? "✅" : "❌"} Desktop entry
+                    </div>
+                  </>
+                )}
                 <div className="text-[#67c1f5]">
                   🎮 Games: {verifyStatus.additional_apps_count}
                 </div>
               </div>
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Disable Steam Updates */}
+      <Card className="bg-[#1b2838] border-[#2a475e]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-white">
+            {connectionMode === "local"
+              ? "Disable Steam Updates (Local)"
+              : "Disable Steam Updates (Remote)"}
+          </CardTitle>
+          <CardDescription>
+            Prevents Steam from auto-updating, which can cause hash mismatch with SLSsteam.
+            Modifies <code className="text-[#67c1f5]">~/.steam/steam/steam.cfg</code>
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="bg-[#2a475e] border border-[#1b2838] p-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 text-[#67c1f5] flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium text-white mb-1">This will add to steam.cfg:</p>
+                <pre className="text-muted-foreground bg-[#171a21] p-2 rounded text-xs">
+                  {`BootStrapperInhibitAll=enable
+BootStrapperForceSelfUpdate=disable`}
+                </pre>
+              </div>
+            </div>
+          </div>
+
+          {/* Status display */}
+          {steamUpdatesStatus && (
+            <div className="bg-[#171a21] border border-[#0a0a0a] p-3 space-y-2 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div className={steamUpdatesStatus.is_configured ? "text-green-400" : "text-red-400"}>
+                  {steamUpdatesStatus.is_configured ? "✅" : "❌"} Status: {steamUpdatesStatus.is_configured ? "Configured" : "Not configured"}
+                </div>
+                <div className={steamUpdatesStatus.inhibit_all ? "text-green-400" : "text-red-400"}>
+                  {steamUpdatesStatus.inhibit_all ? "✅" : "❌"} InhibitAll
+                </div>
+                <div className={steamUpdatesStatus.force_self_update_disabled ? "text-green-400" : "text-red-400"}>
+                  {steamUpdatesStatus.force_self_update_disabled ? "✅" : "❌"} ForceSelfUpdate disabled
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Button
+              onClick={async () => {
+                addLog("info", "Disabling Steam updates...");
+                try {
+                  const { disableSteamUpdates, checkSteamUpdatesStatus } = await import("@/lib/api");
+                  const configToUse = { ...sshConfig };
+                  if (connectionMode === "local") {
+                    configToUse.is_local = true;
+                  }
+                  const result = await disableSteamUpdates(configToUse);
+                  addLog("info", result);
+                  // Refresh status
+                  const status = await checkSteamUpdatesStatus(configToUse);
+                  setSteamUpdatesStatus(status);
+                  setSettingsSavedMessage("Steam updates have been disabled!");
+                  setShowSettingsSavedDialog(true);
+                } catch (error) {
+                  addLog("error", `Failed to disable Steam updates: ${error}`);
+                }
+              }}
+              disabled={connectionMode === "remote" && (!sshConfig.ip || !sshConfig.password)}
+              className="btn-steam flex-1"
+            >
+              <Check className="w-4 h-4 mr-2" />
+              Disable Steam Updates
+            </Button>
+            <Button
+              onClick={async () => {
+                setIsCheckingSteamUpdates(true);
+                try {
+                  const { checkSteamUpdatesStatus } = await import("@/lib/api");
+                  const configToUse = { ...sshConfig };
+                  if (connectionMode === "local") {
+                    configToUse.is_local = true;
+                  }
+                  const status = await checkSteamUpdatesStatus(configToUse);
+                  setSteamUpdatesStatus(status);
+                  addLog("info", `Steam updates status: ${status.is_configured ? "Configured ✅" : "Not configured ❌"}`);
+                } catch (error) {
+                  addLog("error", `Failed to check status: ${error}`);
+                } finally {
+                  setIsCheckingSteamUpdates(false);
+                }
+              }}
+              disabled={(connectionMode === "remote" && (!sshConfig.ip || !sshConfig.password)) || isCheckingSteamUpdates}
+              variant="outline"
+              className="border-[#0a0a0a]"
+            >
+              {isCheckingSteamUpdates ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              <span className="ml-2">Check Status</span>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Fix libcurl32 */}
+      <Card className="bg-[#1b2838] border-[#2a475e]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-white">
+            {connectionMode === "local"
+              ? "Fix libcurl32 (Local)"
+              : "Fix libcurl32 (Remote)"}
+          </CardTitle>
+          <CardDescription>
+            Creates a symlink to fix Steam library loading issues.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="bg-[#2a475e] border border-[#1b2838] p-3">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 text-[#67c1f5] flex-shrink-0 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium text-white mb-1">This will create:</p>
+                <pre className="text-muted-foreground bg-[#171a21] p-2 rounded text-xs">
+                  {`ln -sf /usr/lib32/libcurl.so.4 ~/.steam/steam/ubuntu12_32/libcurl.so.4`}
+                </pre>
+                <p className="mt-2 text-yellow-400">
+                  ⚠️ Make sure <code className="bg-[#171a21] px-1 rounded">lib32-curl</code> is installed:
+                </p>
+                <pre className="text-muted-foreground bg-[#171a21] p-2 rounded text-xs mt-1">
+                  {`sudo pacman -S lib32-curl`}
+                </pre>
+              </div>
+            </div>
+          </div>
+
+          {/* Status display */}
+          {libcurl32Status && (
+            <div className="bg-[#171a21] border border-[#0a0a0a] p-3 space-y-2 text-sm">
+              <div className="grid grid-cols-2 gap-2">
+                <div className={libcurl32Status.source_exists ? "text-green-400" : "text-red-400"}>
+                  {libcurl32Status.source_exists ? "✅" : "❌"} lib32-curl installed
+                </div>
+                <div className={libcurl32Status.symlink_exists ? "text-green-400" : "text-red-400"}>
+                  {libcurl32Status.symlink_exists ? "✅" : "❌"} Symlink exists
+                </div>
+                <div className={libcurl32Status.symlink_correct ? "text-green-400" : "text-yellow-400"}>
+                  {libcurl32Status.symlink_correct ? "✅ Correct target" : libcurl32Status.symlink_exists ? "⚠️ Wrong target" : "❌ No symlink"}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <Button
+              onClick={async () => {
+                addLog("info", "Fixing libcurl32 symlink...");
+                try {
+                  const { fixLibcurl32, checkLibcurl32Status } = await import("@/lib/api");
+                  const configToUse = { ...sshConfig };
+                  if (connectionMode === "local") {
+                    configToUse.is_local = true;
+                  }
+                  const result = await fixLibcurl32(configToUse);
+                  addLog("info", result);
+                  // Refresh status
+                  const status = await checkLibcurl32Status(configToUse);
+                  setLibcurl32Status(status);
+                  setSettingsSavedMessage("libcurl32 symlink has been created!");
+                  setShowSettingsSavedDialog(true);
+                } catch (error) {
+                  addLog("error", `Failed to fix libcurl32: ${error}`);
+                }
+              }}
+              disabled={connectionMode === "remote" && (!sshConfig.ip || !sshConfig.password)}
+              className="btn-steam flex-1"
+            >
+              <Check className="w-4 h-4 mr-2" />
+              Fix libcurl32 Symlink
+            </Button>
+            <Button
+              onClick={async () => {
+                setIsCheckingLibcurl32(true);
+                try {
+                  const { checkLibcurl32Status } = await import("@/lib/api");
+                  const configToUse = { ...sshConfig };
+                  if (connectionMode === "local") {
+                    configToUse.is_local = true;
+                  }
+                  const status = await checkLibcurl32Status(configToUse);
+                  setLibcurl32Status(status);
+                  addLog("info", `libcurl32 status: ${status.symlink_correct ? "OK ✅" : status.symlink_exists ? "Wrong target ⚠️" : "Not configured ❌"}`);
+                } catch (error) {
+                  addLog("error", `Failed to check status: ${error}`);
+                } finally {
+                  setIsCheckingLibcurl32(false);
+                }
+              }}
+              disabled={(connectionMode === "remote" && (!sshConfig.ip || !sshConfig.password)) || isCheckingLibcurl32}
+              variant="outline"
+              className="border-[#0a0a0a]"
+            >
+              {isCheckingLibcurl32 ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              <span className="ml-2">Check Status</span>
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
