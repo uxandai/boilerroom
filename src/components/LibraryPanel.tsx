@@ -77,33 +77,71 @@ export function LibraryPanel() {
   const fetchArtworksWithCache = async (gamesList: InstalledGame[]) => {
     const { getCachedArtworkPath, cacheArtwork } = await import("@/lib/api");
 
-    for (const game of gamesList) {
-      if (game.app_id && game.app_id !== "unknown") {
-        // Skip if already in memory
-        if (artworkMap.has(game.app_id)) continue;
+    // Filter games that need artwork
+    const gamesToLoad = gamesList.filter(game =>
+      game.app_id &&
+      game.app_id !== "unknown" &&
+      !artworkMap.has(game.app_id)
+    );
 
+    if (gamesToLoad.length === 0) return;
+
+    // 1. Check disk cache in batches
+    const missingArtwork: InstalledGame[] = [];
+    const BATCH_SIZE = 20;
+
+    for (let i = 0; i < gamesToLoad.length; i += BATCH_SIZE) {
+      const batch = gamesToLoad.slice(i, i + BATCH_SIZE);
+      const batchUpdates = new Map<string, string>();
+
+      await Promise.all(batch.map(async (game) => {
         try {
-          // 1. Check disk cache first
           const cachedPath = await getCachedArtworkPath(game.app_id);
           if (cachedPath) {
-            // Use asset protocol to serve local file
-            const assetUrl = `asset://localhost/${cachedPath}`;
-            setArtworkMap(prev => new Map(prev).set(game.app_id, assetUrl));
-            continue;
-          }
-
-          // 2. No cache - fetch from SteamGridDB if API key available
-          if (settings.steamGridDbApiKey) {
-            const artwork = await fetchSteamGridDbArtwork(settings.steamGridDbApiKey, game.app_id);
-            if (artwork) {
-              // 3. Cache to disk
-              const localPath = await cacheArtwork(game.app_id, artwork);
-              const assetUrl = `asset://localhost/${localPath}`;
-              setArtworkMap(prev => new Map(prev).set(game.app_id, assetUrl));
-            }
+            batchUpdates.set(game.app_id, `asset://localhost/${cachedPath}`);
+          } else {
+            missingArtwork.push(game);
           }
         } catch {
-          // Ignore artwork errors
+          missingArtwork.push(game);
+        }
+      }));
+
+      if (batchUpdates.size > 0) {
+        setArtworkMap(prev => {
+          const next = new Map(prev);
+          batchUpdates.forEach((url, id) => next.set(id, url));
+          return next;
+        });
+      }
+    }
+
+    // 2. Fetch missing from SteamGridDB (batched)
+    if (settings.steamGridDbApiKey && missingArtwork.length > 0) {
+      const NETWORK_BATCH_SIZE = 5;
+
+      for (let i = 0; i < missingArtwork.length; i += NETWORK_BATCH_SIZE) {
+        const batch = missingArtwork.slice(i, i + NETWORK_BATCH_SIZE);
+        const batchUpdates = new Map<string, string>();
+
+        await Promise.all(batch.map(async (game) => {
+          try {
+            const artwork = await fetchSteamGridDbArtwork(settings.steamGridDbApiKey, game.app_id);
+            if (artwork) {
+              const localPath = await cacheArtwork(game.app_id, artwork);
+              batchUpdates.set(game.app_id, `asset://localhost/${localPath}`);
+            }
+          } catch {
+            // Ignore artwork errors
+          }
+        }));
+
+        if (batchUpdates.size > 0) {
+          setArtworkMap(prev => {
+            const next = new Map(prev);
+            batchUpdates.forEach((url, id) => next.set(id, url));
+            return next;
+          });
         }
       }
     }
