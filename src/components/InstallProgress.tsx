@@ -66,10 +66,17 @@ export function InstallProgress() {
   }
 
   const handleCancel = async () => {
-    addLog("warn", "Cancelling installation...");
+    addLog("warn", "Cancelling operation...");
     try {
-      await cancelInstallation();
-      addLog("info", "Installation cancelled");
+      // Call appropriate cancel function based on operation type
+      if (installProgress?.step === "transferring") {
+        const { cancelCopyToRemote } = await import("@/lib/api");
+        await cancelCopyToRemote();
+        addLog("info", "Copy cancelled");
+      } else {
+        await cancelInstallation();
+        addLog("info", "Installation cancelled");
+      }
     } catch (error) {
       addLog("error", `Cancel failed: ${error}`);
     }
@@ -171,10 +178,26 @@ export function InstallProgress() {
               </>
             )}
             {installProgress.step === "transferring" && (
-              <span>
-                Files: {installProgress.filesTransferred}/{installProgress.filesTotal}
-                {installProgress.bytesTransferred > 0 && ` (${formatBytes(installProgress.bytesTransferred)})`}
-              </span>
+              <>
+                <span>
+                  {installProgress.bytesTotal && installProgress.bytesTotal > 0 ? (
+                    <>
+                      {(installProgress.bytesTransferred / 1073741824).toFixed(1)} / {(installProgress.bytesTotal / 1073741824).toFixed(1)} GB
+                      <span className="text-gray-500 ml-2">({installProgress.filesTransferred}/{installProgress.filesTotal} files)</span>
+                    </>
+                  ) : (
+                    <>Files: {installProgress.filesTransferred}/{installProgress.filesTotal}</>
+                  )}
+                </span>
+                {installProgress.transferSpeed && (
+                  <span className="text-[#67c1f5] font-mono">{installProgress.transferSpeed}</span>
+                )}
+                {installProgress.currentFile && (
+                  <span className="text-gray-500 truncate max-w-md" title={installProgress.currentFile}>
+                    → {installProgress.currentFile}
+                  </span>
+                )}
+              </>
             )}
             {installProgress.message && (
               <span className="ml-3 truncate">{installProgress.message}</span>

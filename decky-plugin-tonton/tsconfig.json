@@ -1,0 +1,23 @@
+{
+    "compilerOptions": {
+        "outDir": "./dist",
+        "declaration": true,
+        "declarationDir": "./dist",
+        "module": "ESNext",
+        "moduleResolution": "Node",
+        "target": "ES2021",
+        "esModuleInterop": true,
+        "jsx": "react",
+        "strict": true,
+        "noEmitOnError": true,
+        "skipLibCheck": true,
+        "rootDir": "./src"
+    },
+    "include": [
+        "src/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist"
+    ]
+}

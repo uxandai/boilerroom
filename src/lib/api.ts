@@ -191,6 +191,10 @@ export async function cancelInstallation(): Promise<void> {
   return invoke("cancel_installation", {});
 }
 
+export async function cancelCopyToRemote(): Promise<void> {
+  return invoke("cancel_copy_to_remote", {});
+}
+
 export async function pauseInstallation(): Promise<void> {
   return invoke("pause_installation", {});
 }

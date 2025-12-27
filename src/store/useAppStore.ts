@@ -42,6 +42,8 @@ export interface InstallProgress {
   bytesTotal: number;
   bytesTransferred: number;
   transferSpeed: string; // e.g. "45.2 MB/s"
+  currentFile?: string;  // Current file being transferred (truncated for display)
+  currentFilePercent?: number; // Per-file progress 0-100
   error?: string;
   message?: string;
 }

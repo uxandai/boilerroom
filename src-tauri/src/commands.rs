@@ -2,8 +2,13 @@ use serde::{Deserialize, Serialize};
 use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 use tauri::Emitter;
+
+// Global state for copy_game_to_remote cancellation
+static COPY_PROCESS_PID: AtomicU32 = AtomicU32::new(0);
+static COPY_CANCELLED: AtomicBool = AtomicBool::new(false);
 
 // SSH Configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3470,7 +3475,6 @@ pub async fn copy_game_to_remote(
     app_id: String,
     game_name: String,
 ) -> Result<(), String> {
-    use regex::Regex;
     use std::io::BufReader;
     use std::process::{Command, Stdio};
 
@@ -3508,7 +3512,7 @@ pub async fn copy_game_to_remote(
         "rsync"
     };
 
-    let use_info_progress = Command::new(rsync_path)
+    let _use_info_progress = Command::new(rsync_path)
         .arg("--version")
         .output()
         .map(|out| {
@@ -3528,13 +3532,18 @@ pub async fn copy_game_to_remote(
         })
         .unwrap_or(false);
 
-    // Build rsync command
+    // Build rsync command - use --itemize-changes + --progress for detailed progress
     let mut cmd = Command::new(rsync_path);
-    if use_info_progress {
-        cmd.args(["-avzs", "--info=progress2", "--no-inc-recursive"]);
-    } else {
-        cmd.args(["-avzs", "--progress"]);
-    }
+    // -i (--itemize-changes) gives us one line per file
+    // --progress shows per-file % and speed
+    // --partial keeps partially transferred files for resume support
+    cmd.args([
+        "-avzs",
+        "-i",
+        "--progress",
+        "--partial",
+        "--no-inc-recursive",
+    ]);
 
     if has_sshpass {
         let ssh_cmd = format!(
@@ -3561,18 +3570,146 @@ pub async fn copy_game_to_remote(
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
+    // First, count total files for accurate progress
+    let file_count: usize = walkdir::WalkDir::new(&local_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_file())
+        .count();
+
+    // Calculate total bytes in source
+    let total_bytes: u64 = walkdir::WalkDir::new(&local_path)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_file())
+        .filter_map(|e| e.metadata().ok())
+        .map(|m| m.len())
+        .sum();
+
+    eprintln!(
+        "[copy_game_to_remote] Source: {} files, {:.2} GB",
+        file_count,
+        total_bytes as f64 / 1_073_741_824.0
+    );
+
+    // Emit initial progress
+    let _ = app.emit(
+        "install-progress",
+        serde_json::json!({
+            "state": "transferring",
+            "message": "Calculating files to sync...",
+            "download_percent": 0.0,
+            "bytes_total": total_bytes,
+            "bytes_transferred": 0
+        }),
+    );
+
+    // Run rsync --dry-run first to calculate exactly what needs to be transferred
+    let mut dry_run_cmd = Command::new(&rsync_path);
+    dry_run_cmd.args(["-avzs", "-i", "--dry-run", "--no-inc-recursive"]);
+
+    // Add SSH options (same as main command)
+    if has_sshpass {
+        let ssh_cmd = format!(
+            "sshpass -e ssh -p {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+            config.port
+        );
+        dry_run_cmd.env("SSHPASS", &config.password);
+        dry_run_cmd.args(["-e", &ssh_cmd]);
+    } else if !config.private_key_path.is_empty() {
+        let ssh_cmd = format!(
+            "ssh -p {} -i {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+            config.port, config.private_key_path
+        );
+        dry_run_cmd.args(["-e", &ssh_cmd]);
+    } else {
+        let ssh_cmd = format!(
+            "ssh -p {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+            config.port
+        );
+        dry_run_cmd.args(["-e", &ssh_cmd]);
+    }
+
+    dry_run_cmd.args([&src_path, &dst_path]);
+    dry_run_cmd.stdout(Stdio::piped());
+    dry_run_cmd.stderr(Stdio::null());
+
+    // Parse dry-run output to get list of files to transfer
+    let mut bytes_to_transfer: u64 = 0;
+    let mut files_to_transfer: usize = 0;
+
+    if let Ok(mut dry_child) = dry_run_cmd.spawn() {
+        if let Some(stdout) = dry_child.stdout.take() {
+            let reader = std::io::BufReader::new(stdout);
+            for line_result in std::io::BufRead::lines(reader) {
+                if let Ok(line) = line_result {
+                    let trimmed = line.trim();
+                    // File to transfer: starts with >f or <f or cf
+                    if (trimmed.starts_with(">f")
+                        || trimmed.starts_with("<f")
+                        || trimmed.starts_with("cf"))
+                        && trimmed.len() > 12
+                    {
+                        if let Some(filename) = trimmed.get(12..) {
+                            let file_path = PathBuf::from(&local_path).join(filename.trim());
+                            if let Ok(metadata) = std::fs::metadata(&file_path) {
+                                bytes_to_transfer += metadata.len();
+                                files_to_transfer += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let _ = dry_child.wait();
+    }
+
+    // Calculate bytes already synced (on remote)
+    let bytes_already_synced = total_bytes.saturating_sub(bytes_to_transfer);
+
+    eprintln!(
+        "[copy_game_to_remote] Dry-run complete: {} files ({:.2} GB) to transfer, {:.2} GB already synced",
+        files_to_transfer,
+        bytes_to_transfer as f64 / 1_073_741_824.0,
+        bytes_already_synced as f64 / 1_073_741_824.0
+    );
+
+    // Emit progress with accurate starting values
+    let start_percent = if total_bytes > 0 {
+        (bytes_already_synced as f64 / total_bytes as f64) * 100.0
+    } else {
+        0.0
+    };
+    let _ = app.emit("install-progress", serde_json::json!({
+        "state": "transferring",
+        "message": format!("Starting transfer: {} files ({:.1} GB)", files_to_transfer, bytes_to_transfer as f64 / 1_073_741_824.0),
+        "download_percent": start_percent,
+        "bytes_total": total_bytes,
+        "bytes_transferred": bytes_already_synced,
+        "files_total": file_count,
+        "files_transferred": file_count - files_to_transfer
+    }));
+    // Reset cancellation flag
+    COPY_CANCELLED.store(false, Ordering::SeqCst);
+
     // Spawn rsync process
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to start rsync: {}", e))?;
 
-    // Parse progress from stdout
-    let files_re = Regex::new(r"to-chk=(\d+)/(\d+)").unwrap();
-    let speed_re = Regex::new(r"(\d+\.?\d*[KMG]?B/s)").unwrap();
+    // Store PID for cancellation
+    COPY_PROCESS_PID.store(child.id(), Ordering::SeqCst);
 
+    // Parse progress from stdout - using itemize-changes format
+    // Format: >f..t...... path/to/file (> = sending, f = file)
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
         let app_clone = app.clone();
+        let file_count_clone = file_count;
+        let total_bytes_clone = total_bytes;
+        let bytes_already_synced_clone = bytes_already_synced;
+        let files_already_synced = file_count - files_to_transfer;
+        let local_path_clone = local_path.clone();
 
         std::thread::spawn(move || {
             use std::io::Read;
@@ -3580,47 +3717,243 @@ pub async fn copy_game_to_remote(
             let mut buffer = [0u8; 1];
             let mut line = String::new();
             let mut stdout = reader.into_inner();
+            // Start with files already synced (from dry-run)
+            let mut files_done: usize = files_already_synced;
+            // Start with bytes already synced (from dry-run)
+            let mut bytes_transferred: u64 = bytes_already_synced_clone;
+            let mut current_file_name = String::new();
+            let mut current_file_percent: u8 = 0;
+            let mut current_file_bytes: u64 = 0;
+            let mut current_speed = String::new();
+
+            // Regex for parsing progress line: "  1,234,567 100%   12.34MB/s"
+            // Captures: bytes (with commas), percentage, speed
+            // Note: rsync uses lowercase kB/s, MB/s, GB/s
+            let progress_re = regex::Regex::new(r"([\d,]+)\s+(\d+)%\s+([\d.]+\s*[kKMG]?B/s)").ok();
 
             while let Ok(1) = stdout.read(&mut buffer) {
                 let ch = buffer[0] as char;
                 if ch == '\r' || ch == '\n' {
                     if !line.is_empty() {
-                        // Parse progress
-                        if let Some(caps) = files_re.captures(&line) {
-                            if let (Some(remaining), Some(total)) = (caps.get(1), caps.get(2)) {
-                                if let (Ok(r), Ok(t)) = (
-                                    remaining.as_str().parse::<usize>(),
-                                    total.as_str().parse::<usize>(),
-                                ) {
-                                    let done = t.saturating_sub(r);
-                                    let percent = if t > 0 {
-                                        (done as f64 / t as f64) * 100.0
+                        let trimmed = line.trim();
+
+                        // Parse itemize-changes output (file being transferred)
+                        // Format: YXcstpoguax filename
+                        if (trimmed.starts_with(">f")
+                            || trimmed.starts_with("<f")
+                            || trimmed.starts_with("cf"))
+                            && trimmed.len() > 12
+                        {
+                            if let Some(filename) = trimmed.get(12..) {
+                                files_done += 1;
+                                current_file_name = filename.trim().to_string();
+                                current_file_percent = 0;
+
+                                // Truncate long filenames for UI display
+                                let display_file = if current_file_name.len() > 40 {
+                                    format!(
+                                        "...{}",
+                                        &current_file_name[current_file_name.len() - 37..]
+                                    )
+                                } else {
+                                    current_file_name.clone()
+                                };
+
+                                let total = if file_count_clone > 0 {
+                                    file_count_clone
+                                } else {
+                                    files_done
+                                };
+                                let percent = if total > 0 {
+                                    (files_done as f64 / total as f64) * 100.0
+                                } else {
+                                    0.0
+                                };
+
+                                eprintln!(
+                                    "[rsync] [{}/{}] {}",
+                                    files_done, total, current_file_name
+                                );
+
+                                let _ = app_clone.emit(
+                                    "install-progress",
+                                    serde_json::json!({
+                                        "state": "transferring",
+                                        "message": format!("Copying: {}/{}", files_done, total),
+                                        "current_file": display_file,
+                                        "current_file_percent": 0,
+                                        "download_percent": percent,
+                                        "transfer_speed": current_speed,
+                                        "files_transferred": files_done,
+                                        "files_total": total,
+                                        "bytes_transferred": bytes_transferred,
+                                        "bytes_total": total_bytes_clone
+                                    }),
+                                );
+                            }
+                        }
+                        // Parse progress percentage line: "  1,234,567  50%   12.34MB/s"
+                        else if let Some(ref re) = progress_re {
+                            if let Some(caps) = re.captures(trimmed) {
+                                // Parse byte count (remove commas)
+                                if let Some(bytes_match) = caps.get(1) {
+                                    let bytes_str = bytes_match.as_str().replace(',', "");
+                                    if let Ok(bytes) = bytes_str.parse::<u64>() {
+                                        current_file_bytes = bytes;
+                                        eprintln!(
+                                            "[rsync progress] bytes={} file={}",
+                                            bytes, current_file_name
+                                        );
+                                    }
+                                }
+                                // Parse percentage
+                                if let Some(pct_match) = caps.get(2) {
+                                    if let Ok(pct) = pct_match.as_str().parse::<u8>() {
+                                        current_file_percent = pct;
+                                        // When file completes (100%), add to total bytes transferred
+                                        if pct == 100 && current_file_bytes > 0 {
+                                            bytes_transferred += current_file_bytes;
+                                            current_file_bytes = 0;
+                                        }
+                                    }
+                                }
+                                // Parse speed
+                                if let Some(speed_match) = caps.get(3) {
+                                    current_speed = speed_match.as_str().to_string();
+                                }
+
+                                // Only update UI if we have a current file and progress changed significantly
+                                if !current_file_name.is_empty() && current_file_percent > 0 {
+                                    let display_file = if current_file_name.len() > 35 {
+                                        format!(
+                                            "...{}",
+                                            &current_file_name[current_file_name.len() - 32..]
+                                        )
                                     } else {
-                                        0.0
+                                        current_file_name.clone()
                                     };
-                                    let speed = speed_re
-                                        .captures(&line)
-                                        .and_then(|c| c.get(1))
-                                        .map(|m| m.as_str().to_string())
-                                        .unwrap_or_default();
+
+                                    let total = if file_count_clone > 0 {
+                                        file_count_clone
+                                    } else {
+                                        files_done
+                                    };
+
+                                    // Calculate byte-based progress if we have total bytes
+                                    let (overall_percent, byte_progress_str) = if total_bytes_clone
+                                        > 0
+                                    {
+                                        let current_total = bytes_transferred
+                                            + (current_file_bytes as f64
+                                                * current_file_percent as f64
+                                                / 100.0)
+                                                as u64;
+                                        let pct = (current_total as f64 / total_bytes_clone as f64)
+                                            * 100.0;
+                                        let transferred_gb = current_total as f64 / 1_073_741_824.0;
+                                        let total_gb = total_bytes_clone as f64 / 1_073_741_824.0;
+                                        (pct, format!("{:.1} / {:.1} GB", transferred_gb, total_gb))
+                                    } else {
+                                        // Fallback to file-based progress
+                                        let base_percent = if total > 0 {
+                                            ((files_done - 1) as f64 / total as f64) * 100.0
+                                        } else {
+                                            0.0
+                                        };
+                                        let file_contribution = if total > 0 {
+                                            current_file_percent as f64 / total as f64
+                                        } else {
+                                            0.0
+                                        };
+                                        (base_percent + file_contribution, String::new())
+                                    };
 
                                     let _ = app_clone.emit("install-progress", serde_json::json!({
                                         "state": "transferring",
-                                        "message": format!("Copying to Steam Deck: {}/{}", done, t),
-                                        "download_percent": percent,
-                                        "transfer_speed": speed,
-                                        "files_transferred": done,
-                                        "files_total": t
+                                        "message": if byte_progress_str.is_empty() {
+                                            format!("Copying: {}/{} ({}%)", files_done, total, current_file_percent)
+                                        } else {
+                                            format!("Copying: {} | {}", byte_progress_str, current_speed)
+                                        },
+                                        "current_file": format!("{} {}%", display_file, current_file_percent),
+                                        "current_file_percent": current_file_percent,
+                                        "download_percent": overall_percent,
+                                        "transfer_speed": current_speed,
+                                        "files_transferred": files_done,
+                                        "files_total": total,
+                                        "bytes_transferred": bytes_transferred,
+                                        "bytes_total": total_bytes_clone
                                     }));
                                 }
                             }
                         }
+                        // Unchanged file (already on remote): starts with .f
+                        else if trimmed.starts_with(".f") && trimmed.len() > 12 {
+                            files_done += 1;
+
+                            // Get the filename and add its size to bytes_transferred
+                            if let Some(filename) = trimmed.get(12..) {
+                                let file_path =
+                                    PathBuf::from(&local_path_clone).join(filename.trim());
+                                if let Ok(metadata) = std::fs::metadata(&file_path) {
+                                    bytes_transferred += metadata.len();
+                                }
+                            }
+
+                            if files_done % 50 == 0 {
+                                let total = if file_count_clone > 0 {
+                                    file_count_clone
+                                } else {
+                                    files_done
+                                };
+                                let byte_percent = if total_bytes_clone > 0 {
+                                    (bytes_transferred as f64 / total_bytes_clone as f64) * 100.0
+                                } else {
+                                    0.0
+                                };
+                                let transferred_gb = bytes_transferred as f64 / 1_073_741_824.0;
+                                let total_gb = total_bytes_clone as f64 / 1_073_741_824.0;
+                                eprintln!(
+                                    "[rsync] Skipped {} files ({:.1}/{:.1} GB)",
+                                    files_done, transferred_gb, total_gb
+                                );
+                                let _ = app_clone.emit("install-progress", serde_json::json!({
+                                    "state": "transferring",
+                                    "message": format!("Verifying: {:.1}/{:.1} GB", transferred_gb, total_gb),
+                                    "current_file": "(skipping unchanged)",
+                                    "download_percent": byte_percent,
+                                    "transfer_speed": "",
+                                    "files_transferred": files_done,
+                                    "files_total": total,
+                                    "bytes_transferred": bytes_transferred,
+                                    "bytes_total": total_bytes_clone
+                                }));
+                            }
+                        }
+                        // Directory
+                        else if trimmed.starts_with(">d")
+                            || trimmed.starts_with("cd")
+                            || trimmed.starts_with(".d")
+                        {
+                            // Silent - don't spam logs with directories
+                        }
+
                         line.clear();
                     }
                 } else {
                     line.push(ch);
                 }
             }
+
+            // Final progress update
+            let _ = app_clone.emit("install-progress", serde_json::json!({
+                "state": "transferring",
+                "message": format!("Transfer complete: {}/{} files", files_done, file_count_clone),
+                "current_file": "",
+                "download_percent": 100.0,
+                "files_transferred": files_done,
+                "files_total": file_count_clone
+            }));
         });
     }
 
@@ -3647,6 +3980,96 @@ pub async fn copy_game_to_remote(
         );
         return Err(error_msg);
     }
+
+    // VERIFICATION DISABLED - uncomment to enable post-transfer checksum verification
+    // This can take 3-10 minutes for 60GB games
+    /*
+    // Verify transfer with checksum comparison
+    let _ = app.emit(
+        "install-progress",
+        serde_json::json!({
+            "state": "transferring",
+            "message": "Verifying transfer (checksum)...",
+            "download_percent": 100.0
+        }),
+    );
+
+    eprintln!("[copy_game_to_remote] Running verification with checksum...");
+
+    let mut verify_cmd = Command::new(&rsync_path);
+    verify_cmd.args(["-avzsc", "-i", "--dry-run", "--no-inc-recursive"]);
+
+    // Add SSH options
+    if has_sshpass {
+        let ssh_cmd = format!(
+            "sshpass -e ssh -p {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+            config.port
+        );
+        verify_cmd.env("SSHPASS", &config.password);
+        verify_cmd.args(["-e", &ssh_cmd]);
+    } else if !config.private_key_path.is_empty() {
+        let ssh_cmd = format!(
+            "ssh -p {} -i {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+            config.port, config.private_key_path
+        );
+        verify_cmd.args(["-e", &ssh_cmd]);
+    } else {
+        let ssh_cmd = format!(
+            "ssh -p {} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null",
+            config.port
+        );
+        verify_cmd.args(["-e", &ssh_cmd]);
+    }
+
+    verify_cmd.args([&src_path, &dst_path]);
+    verify_cmd.stdout(Stdio::piped());
+    verify_cmd.stderr(Stdio::null());
+
+    // Check if any files would be transferred (indicating checksum mismatch)
+    let mut files_needing_resync = Vec::new();
+    if let Ok(mut verify_child) = verify_cmd.spawn() {
+        if let Some(stdout) = verify_child.stdout.take() {
+            let reader = std::io::BufReader::new(stdout);
+            for line_result in std::io::BufRead::lines(reader) {
+                if let Ok(line) = line_result {
+                    let trimmed = line.trim();
+                    // File that would be transferred (checksum mismatch)
+                    if (trimmed.starts_with(">f")
+                        || trimmed.starts_with("<f")
+                        || trimmed.starts_with("cf"))
+                        && trimmed.len() > 12
+                    {
+                        if let Some(filename) = trimmed.get(12..) {
+                            files_needing_resync.push(filename.trim().to_string());
+                        }
+                    }
+                }
+            }
+        }
+        let _ = verify_child.wait();
+    }
+
+    if !files_needing_resync.is_empty() {
+        eprintln!(
+            "[copy_game_to_remote] Verification found {} files with checksum mismatch:",
+            files_needing_resync.len()
+        );
+        for f in &files_needing_resync {
+            eprintln!("  - {}", f);
+        }
+        // Emit warning but don't fail - user can re-run to fix
+        let _ = app.emit(
+            "install-progress",
+            serde_json::json!({
+                "state": "transferring",
+                "message": format!("Warning: {} files may need re-sync (checksum mismatch)", files_needing_resync.len()),
+                "download_percent": 100.0
+            }),
+        );
+    } else {
+        eprintln!("[copy_game_to_remote] Verification passed - all checksums match!");
+    }
+    */
 
     // Update SLSsteam config on remote
     let _ = app.emit(
@@ -3737,6 +4160,65 @@ pub async fn copy_game_to_remote(
             "state": "finished",
             "message": format!("{} copied successfully!", game_name),
             "download_percent": 100.0
+        }),
+    );
+
+    Ok(())
+}
+
+// ============================================================================
+// CANCEL COPY TO REMOTE
+// ============================================================================
+
+/// Cancel an ongoing copy_game_to_remote operation
+#[tauri::command]
+pub async fn cancel_copy_to_remote(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Emitter;
+
+    eprintln!("[cancel_copy_to_remote] Cancel requested");
+
+    // Set cancellation flag
+    COPY_CANCELLED.store(true, Ordering::SeqCst);
+
+    // Get the PID
+    let pid = COPY_PROCESS_PID.load(Ordering::SeqCst);
+
+    if pid > 0 {
+        eprintln!("[cancel_copy_to_remote] Killing rsync process PID: {}", pid);
+
+        #[cfg(unix)]
+        {
+            // Send SIGTERM first
+            let _ = std::process::Command::new("kill")
+                .arg(pid.to_string())
+                .status();
+
+            // Wait a bit
+            std::thread::sleep(std::time::Duration::from_millis(500));
+
+            // Then SIGKILL if still running
+            let _ = std::process::Command::new("kill")
+                .args(["-9", &pid.to_string()])
+                .status();
+        }
+
+        #[cfg(windows)]
+        {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/PID", &pid.to_string()])
+                .status();
+        }
+
+        // Reset PID
+        COPY_PROCESS_PID.store(0, Ordering::SeqCst);
+    }
+
+    // Emit cancelled event
+    let _ = app.emit(
+        "install-progress",
+        serde_json::json!({
+            "state": "cancelled",
+            "message": "Copy cancelled by user"
         }),
     );
 

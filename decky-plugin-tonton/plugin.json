@@ -1,0 +1,8 @@
+{
+    "name": "TonTon",
+    "author": "TonTonDeck",
+    "flags": [
+        "root"
+    ],
+    "api_version": 1
+}

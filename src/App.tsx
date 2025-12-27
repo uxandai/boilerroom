@@ -113,6 +113,8 @@ function App() {
           bytesTotal: payload.bytes_total || 0,
           bytesTransferred: payload.bytes_transferred || 0,
           transferSpeed: payload.transfer_speed || "",
+          currentFile: payload.current_file || "",
+          currentFilePercent: payload.current_file_percent || 0,
           message: payload.message,
           error: payload.state === "error" ? payload.message : undefined,
         });

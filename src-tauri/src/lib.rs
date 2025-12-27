@@ -104,6 +104,7 @@ pub fn run() {
             check_game_installed,
             get_steam_libraries,
             copy_game_to_remote,
+            cancel_copy_to_remote,
             // Settings commands
             save_api_key,
             get_api_key,

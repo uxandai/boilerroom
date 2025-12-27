@@ -1,0 +1,39 @@
+{
+    "name": "tonton",
+    "version": "1.0.0",
+    "description": "Sync TonTonDeck games from your PC to Steam Deck",
+    "scripts": {
+        "build": "shx rm -rf dist && rollup -c --silent",
+        "watch": "rollup -c -w"
+    },
+    "repository": {
+        "type": "git",
+        "url": ""
+    },
+    "license": "BSD-3-Clause",
+    "devDependencies": {
+        "@decky/rollup": "^1.0.1",
+        "@decky/ui": "^4.7.2",
+        "@rollup/plugin-commonjs": "^21.1.0",
+        "@rollup/plugin-json": "^4.1.0",
+        "@rollup/plugin-node-resolve": "^13.3.0",
+        "@rollup/plugin-replace": "^4.0.0",
+        "@rollup/plugin-typescript": "^8.5.0",
+        "@types/react": "18.3.3",
+        "@types/react-dom": "18.3.0",
+        "react": "18.3.1",
+        "react-dom": "18.3.1",
+        "rollup": "^2.79.2",
+        "shx": "^0.3.4",
+        "tslib": "^2.8.1",
+        "typescript": "^5.7.2"
+    },
+    "pnpm": {
+        "peerDependencyRules": {
+            "ignoreMissing": [
+                "react",
+                "react-dom"
+            ]
+        }
+    }
+}
