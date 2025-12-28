@@ -80,9 +80,10 @@ export async function extractRemote(
 
 export async function updateSlssteamConfig(
   config: SshConfig,
-  appId: string
+  appId: string,
+  gameName: string
 ): Promise<void> {
-  return invoke<void>("update_slssteam_config", { config, appId });
+  return invoke<void>("update_slssteam_config", { config, appId, gameName });
 }
 
 // Settings commands
@@ -233,6 +234,7 @@ export async function installSlssteam(
 export interface SlssteamStatus {
   is_readonly: boolean;
   slssteam_so_exists: boolean;
+  library_inject_so_exists: boolean;
   config_exists: boolean;
   config_play_not_owned: boolean;
   config_safe_mode_on: boolean;
@@ -342,6 +344,7 @@ export async function getCachedSlssteamPath(): Promise<string | null> {
 // Local SLSsteam verification (for running on Steam Deck itself)
 export interface SlssteamLocalStatus {
   slssteam_so_exists: boolean;
+  library_inject_so_exists: boolean;
   config_exists: boolean;
   config_play_not_owned: boolean;
   additional_apps_count: number;
@@ -424,4 +427,30 @@ export interface Libcurl32Status {
 
 export async function checkLibcurl32Status(config: SshConfig): Promise<Libcurl32Status> {
   return invoke<Libcurl32Status>("check_libcurl32_status", { config });
+}
+
+// Depot keys only install (no download) - configures Steam to recognize game
+export interface DepotKeyInfo {
+  depot_id: string;
+  manifest_id: string;
+  manifest_path: string;
+  key: string;
+}
+
+export async function installDepotKeysOnly(
+  appId: string,
+  gameName: string,
+  depots: DepotKeyInfo[],
+  sshConfig: SshConfig,
+  targetLibrary: string,
+  triggerSteamInstall: boolean = false
+): Promise<string> {
+  return invoke<string>("install_depot_keys_only", {
+    appId,
+    gameName,
+    depots,
+    sshConfig,
+    targetLibrary,
+    triggerSteamInstall
+  });
 }

@@ -17,8 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Download, HardDrive, RefreshCcw } from "lucide-react";
-import { getSteamLibraries, startPipelinedInstall, downloadBundle, extractManifestZip, checkGameInstalled, type DepotInfo, type InstalledDepot } from "@/lib/api";
+import { Loader2, Download, HardDrive, RefreshCcw, Key } from "lucide-react";
+import { getSteamLibraries, startPipelinedInstall, downloadBundle, extractManifestZip, checkGameInstalled, installDepotKeysOnly, type DepotInfo, type InstalledDepot, type DepotKeyInfo } from "@/lib/api";
 import type { SearchResult } from "@/store/useAppStore";
 
 interface Depot {
@@ -50,6 +50,7 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
   const [isInstalling, setIsInstalling] = useState(false);
   const [isGameInstalled, setIsGameInstalled] = useState(false);
   const [hasUpdates, setHasUpdates] = useState(false);
+  const [isDepotKeysOnly, setIsDepotKeysOnly] = useState(false);
 
   // Load Steam libraries when modal opens
   useEffect(() => {
@@ -315,11 +316,56 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
     }
   };
 
+  // Handle "Only Depot & Keys" mode - configure Steam without downloading
+  const handleDepotKeysOnly = async () => {
+    if (!game || selectedCount === 0 || !selectedLibrary) return;
+
+    setIsDepotKeysOnly(true);
+    addLog("info", `Configuring depot keys for ${game.game_name} (no download)`);
+
+    try {
+      const selectedDepotsFiltered = depots.filter(d => d.selected);
+
+      // Convert to DepotKeyInfo format
+      const depotKeyInfos: DepotKeyInfo[] = selectedDepotsFiltered.map(d => ({
+        depot_id: d.depot_id,
+        manifest_id: d.manifest_id,
+        manifest_path: d.manifest_path,
+        key: d.key,
+      }));
+
+      // Inject is_local flag if needed
+      const configToUse = { ...sshConfig };
+      const { connectionMode } = useAppStore.getState();
+      if (connectionMode === "local") {
+        configToUse.is_local = true;
+      }
+
+      const result = await installDepotKeysOnly(
+        game.game_id,
+        game.game_name,
+        depotKeyInfos,
+        configToUse,
+        selectedLibrary,
+        false // Don't trigger steam://install - user should restart Steam manually
+      );
+
+      addLog("info", result);
+      addLog("info", `✅ Depot keys configured! Restart Steam to start downloading.`);
+
+      onClose();
+    } catch (error) {
+      addLog("error", `Depot keys config failed: ${error}`);
+    } finally {
+      setIsDepotKeysOnly(false);
+    }
+  };
+
   if (!game) return null;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#1b2838] border-[#0a0a0a] max-w-lg">
+      <DialogContent className="bg-[#1b2838] border-[#0a0a0a] max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-white flex items-center gap-2">
             <Download className="w-5 h-5" />
@@ -433,40 +479,60 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
         </div>
 
         <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="border-[#0a0a0a]"
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleInstall}
-            disabled={selectedCount === 0 || !selectedLibrary || isInstalling}
-            className="btn-steam"
-          >
-            {isInstalling ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                {isGameInstalled ? "Updating..." : "Installing..."}
-              </>
-            ) : isGameInstalled && hasUpdates ? (
-              <>
-                <RefreshCcw className="w-4 h-4 mr-2" />
-                Update ({selectedCount})
-              </>
-            ) : isGameInstalled ? (
-              <>
-                <Download className="w-4 h-4 mr-2" />
-                Reinstall ({selectedCount})
-              </>
-            ) : (
-              <>
-                <Download className="w-4 h-4 mr-2" />
-                Install ({selectedCount})
-              </>
-            )}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={onClose}
+              className="border-[#0a0a0a]"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDepotKeysOnly}
+              disabled={selectedCount === 0 || !selectedLibrary || isInstalling || isDepotKeysOnly}
+              variant="secondary"
+              title="Add depot keys and manifests only (no download) - use steam://install/{appid} afterwards"
+            >
+              {isDepotKeysOnly ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Configuring...
+                </>
+              ) : (
+                <>
+                  <Key className="w-4 h-4 mr-2" />
+                  Only Depot & Keys
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={handleInstall}
+              disabled={selectedCount === 0 || !selectedLibrary || isInstalling || isDepotKeysOnly}
+              className="btn-steam"
+            >
+              {isInstalling ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {isGameInstalled ? "Updating..." : "Installing..."}
+                </>
+              ) : isGameInstalled && hasUpdates ? (
+                <>
+                  <RefreshCcw className="w-4 h-4 mr-2" />
+                  Update ({selectedCount})
+                </>
+              ) : isGameInstalled ? (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Reinstall ({selectedCount})
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Install ({selectedCount})
+                </>
+              )}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

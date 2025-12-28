@@ -37,6 +37,7 @@ export function SettingsPanel() {
   const [verifyStatus, setVerifyStatus] = useState<{
     is_readonly: boolean;
     slssteam_so_exists: boolean;
+    library_inject_so_exists: boolean;
     config_exists: boolean;
     config_play_not_owned: boolean;
     config_safe_mode_on: boolean;
@@ -241,6 +242,7 @@ export function SettingsPanel() {
         setVerifyStatus({
           is_readonly: false, // Not relevant locally
           slssteam_so_exists: status.slssteam_so_exists,
+          library_inject_so_exists: status.library_inject_so_exists,
           config_exists: status.config_exists,
           config_play_not_owned: status.config_play_not_owned,
           config_safe_mode_on: false, // SteamOS only
@@ -250,6 +252,7 @@ export function SettingsPanel() {
         });
 
         addLog("info", `[LOCAL] SLSsteam.so: ${status.slssteam_so_exists ? "✅" : "❌"}`);
+        addLog("info", `[LOCAL] library-inject.so: ${status.library_inject_so_exists ? "✅" : "❌"}`);
         addLog("info", `[LOCAL] config.yaml: ${status.config_exists ? "✅" : "❌"}`);
         addLog("info", `[LOCAL] PlayNotOwnedGames: ${status.config_play_not_owned ? "✅" : "❌"}`);
         addLog("info", `[LOCAL] Desktop entry (LD_AUDIT): ${status.desktop_entry_patched ? "✅" : "❌"}`);
@@ -262,6 +265,7 @@ export function SettingsPanel() {
 
         addLog("info", `Readonly: ${status.is_readonly ? "❌ YES" : "✅ NO"}`);
         addLog("info", `SLSsteam.so: ${status.slssteam_so_exists ? "✅" : "❌"}`);
+        addLog("info", `library-inject.so: ${status.library_inject_so_exists ? "✅" : "⚠️"}`);
         addLog("info", `config.yaml: ${status.config_exists ? "✅" : "❌"}`);
         addLog("info", `PlayNotOwnedGames: ${status.config_play_not_owned ? "✅" : "❌"}`);
         addLog("info", `SafeMode: ${status.config_safe_mode_on ? "✅" : "❌"}`);
@@ -700,6 +704,9 @@ export function SettingsPanel() {
                 )}
                 <div className={verifyStatus.slssteam_so_exists ? "text-green-400" : "text-red-400"}>
                   {verifyStatus.slssteam_so_exists ? "✅" : "❌"} SLSsteam.so
+                </div>
+                <div className={verifyStatus.library_inject_so_exists ? "text-green-400" : "text-yellow-400"}>
+                  {verifyStatus.library_inject_so_exists ? "✅" : "⚠️"} library-inject.so
                 </div>
                 <div className={verifyStatus.config_exists ? "text-green-400" : "text-red-400"}>
                   {verifyStatus.config_exists ? "✅" : "❌"} config.yaml

@@ -1,4 +1,5 @@
 mod commands;
+mod config_vdf;
 mod install_manager;
 mod steamless;
 
@@ -122,6 +123,8 @@ pub fn run() {
             fix_libcurl32,
             check_steam_updates_status,
             check_libcurl32_status,
+            // Depot keys only install command
+            install_depot_keys_only,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

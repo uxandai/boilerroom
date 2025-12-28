@@ -1276,6 +1276,7 @@ pub async fn start_pipelined_install(
         game_name,
         depots,
         keys_file,
+        depot_keys,
         depot_downloader_path,
         steamless_path,
         ssh_config,
@@ -1449,7 +1450,11 @@ pub async fn extract_remote(
 
 /// Update SLSsteam config.yaml with new AppID
 #[tauri::command]
-pub async fn update_slssteam_config(config: SshConfig, app_id: String) -> Result<(), String> {
+pub async fn update_slssteam_config(
+    config: SshConfig,
+    app_id: String,
+    game_name: String,
+) -> Result<(), String> {
     let addr = format!("{}:{}", config.ip, config.port);
 
     let tcp = TcpStream::connect_timeout(
@@ -1487,14 +1492,16 @@ pub async fn update_slssteam_config(config: SshConfig, app_id: String) -> Result
     let config_path = "/home/deck/.config/SLSsteam/config.yaml";
 
     // Read existing config
-    let mut config_content = String::new();
-    if let Ok(mut file) = sftp.open(Path::new(config_path)) {
-        file.read_to_string(&mut config_content).ok();
-    }
+    let config_content = match sftp.open(Path::new(config_path)) {
+        Ok(mut file) => {
+            let mut content = String::new();
+            file.read_to_string(&mut content).ok();
+            content
+        }
+        Err(_) => String::new(),
+    };
 
-    // Create backup with timestamp
-    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
-    let backup_path = format!("{}.bak-{}", config_path, timestamp);
+    let backup_path = "/home/deck/.config/SLSsteam/config.yaml.bak";
 
     // Backup command
     let backup_cmd = format!("cp {} {} 2>/dev/null || true", config_path, backup_path);
@@ -1504,8 +1511,9 @@ pub async fn update_slssteam_config(config: SshConfig, app_id: String) -> Result
     channel.exec(&backup_cmd).ok();
     channel.wait_close().ok();
 
-    // Parse and update YAML
-    let new_content = add_app_to_config(&config_content, &app_id)?;
+    // Parse and update YAML (with game name as comment)
+    let new_content =
+        crate::install_manager::add_app_to_config_yaml(&config_content, &app_id, &game_name);
 
     // Ensure directory exists
     let mkdir_cmd = "mkdir -p /home/deck/.config/SLSsteam";
@@ -2260,6 +2268,7 @@ pub async fn check_game_update(
 pub struct SlssteamStatus {
     pub is_readonly: bool,
     pub slssteam_so_exists: bool,
+    pub library_inject_so_exists: bool,
     pub config_exists: bool,
     pub config_play_not_owned: bool,
     pub config_safe_mode_on: bool,
@@ -2309,6 +2318,14 @@ pub async fn verify_slssteam(config: SshConfig) -> Result<SlssteamStatus, String
         eprintln!(
             "[SLSsteam Verify] SLSsteam.so exists: {}",
             slssteam_so_exists
+        );
+
+        // Check library-inject.so
+        let library_inject_path = home.join(".local/share/SLSsteam/library-inject.so");
+        let library_inject_so_exists = library_inject_path.exists();
+        eprintln!(
+            "[SLSsteam Verify] library-inject.so exists: {}",
+            library_inject_so_exists
         );
 
         // Check config
@@ -2421,6 +2438,7 @@ pub async fn verify_slssteam(config: SshConfig) -> Result<SlssteamStatus, String
         return Ok(SlssteamStatus {
             is_readonly,
             slssteam_so_exists,
+            library_inject_so_exists,
             config_exists,
             config_play_not_owned,
             config_safe_mode_on,
@@ -2488,6 +2506,17 @@ pub async fn verify_slssteam(config: SshConfig) -> Result<SlssteamStatus, String
     eprintln!(
         "[SLSsteam Verify] SLSsteam.so exists: {}",
         slssteam_so_exists
+    );
+
+    // Check if library-inject.so exists
+    let inject_out = ssh_exec(
+        &sess,
+        "test -f ~/.local/share/SLSsteam/library-inject.so && echo 'EXISTS' || echo 'MISSING'",
+    )?;
+    let library_inject_so_exists = inject_out.contains("EXISTS");
+    eprintln!(
+        "[SLSsteam Verify] library-inject.so exists: {}",
+        library_inject_so_exists
     );
 
     // Check config.yaml
@@ -2574,6 +2603,7 @@ pub async fn verify_slssteam(config: SshConfig) -> Result<SlssteamStatus, String
     Ok(SlssteamStatus {
         is_readonly,
         slssteam_so_exists,
+        library_inject_so_exists,
         config_exists,
         config_play_not_owned,
         config_safe_mode_on,
@@ -2587,6 +2617,7 @@ pub async fn verify_slssteam(config: SshConfig) -> Result<SlssteamStatus, String
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SlssteamLocalStatus {
     pub slssteam_so_exists: bool,
+    pub library_inject_so_exists: bool,
     pub config_exists: bool,
     pub config_play_not_owned: bool,
     pub additional_apps_count: usize,
@@ -2607,6 +2638,14 @@ pub async fn verify_slssteam_local() -> Result<SlssteamLocalStatus, String> {
     eprintln!(
         "[SLSsteam Local Verify] SLSsteam.so path: {:?}, exists: {}",
         slssteam_so_path, slssteam_so_exists
+    );
+
+    // Check library-inject.so
+    let library_inject_path = home.join(".local/share/SLSsteam/library-inject.so");
+    let library_inject_so_exists = library_inject_path.exists();
+    eprintln!(
+        "[SLSsteam Local Verify] library-inject.so exists: {}",
+        library_inject_so_exists
     );
 
     // Check config.yaml
@@ -2674,6 +2713,7 @@ pub async fn verify_slssteam_local() -> Result<SlssteamLocalStatus, String> {
 
     Ok(SlssteamLocalStatus {
         slssteam_so_exists,
+        library_inject_so_exists,
         config_exists,
         config_play_not_owned,
         additional_apps_count,
@@ -2873,6 +2913,26 @@ pub async fn install_slssteam(
         }
         log.push_str("SLSsteam.so copied and permissions set.\n");
 
+        // Step 3b: Copy library-inject.so if it exists in cache
+        let slssteam_cache_dir = get_slssteam_cache_dir()?;
+        let library_inject_source = slssteam_cache_dir.join("library-inject.so");
+        if library_inject_source.exists() {
+            let dest_inject = slssteam_dir.join("library-inject.so");
+            std::fs::copy(&library_inject_source, &dest_inject)
+                .map_err(|e| format!("Failed to copy library-inject.so: {}", e))?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mut perms = std::fs::metadata(&dest_inject)
+                    .map_err(|e| format!("Failed to get permissions: {}", e))?
+                    .permissions();
+                perms.set_mode(0o755);
+                std::fs::set_permissions(&dest_inject, perms)
+                    .map_err(|e| format!("Failed to set permissions: {}", e))?;
+            }
+            log.push_str("library-inject.so copied.\n");
+        }
+
         // Step 4: Write default config.yaml
         log.push_str("Writing default config.yaml...\n");
         let config_file = config_dir.join("config.yaml");
@@ -2981,7 +3041,18 @@ ExtendedLogging: no
 
         // Step 5: Patch steam.desktop
         log.push_str("Patching steam.desktop...\n");
-        let ld_audit_path = dest_so.to_string_lossy();
+
+        // LD_AUDIT needs both library-inject.so and SLSsteam.so
+        let library_inject_path = slssteam_dir.join("library-inject.so");
+        let ld_audit_path = if library_inject_path.exists() {
+            format!(
+                "{}:{}",
+                library_inject_path.to_string_lossy(),
+                dest_so.to_string_lossy()
+            )
+        } else {
+            dest_so.to_string_lossy().to_string()
+        };
 
         if Path::new("/usr/share/applications/steam.desktop").exists() {
             let original = std::fs::read_to_string("/usr/share/applications/steam.desktop")
@@ -3222,15 +3293,47 @@ ExtendedLogging: no
     }
     log.push_str("Upload verified.\n");
 
+    // Step 4b: Upload library-inject.so if it exists in cache
+    let slssteam_cache_dir = get_slssteam_cache_dir()?;
+    let library_inject_path = slssteam_cache_dir.join("library-inject.so");
+    if library_inject_path.exists() {
+        log.push_str("Uploading library-inject.so...\n");
+        let inject_bytes = fs::read(&library_inject_path)
+            .map_err(|e| format!("Failed to read library-inject.so: {}", e))?;
+
+        let sftp2 = sess
+            .sftp()
+            .map_err(|e| format!("Failed to create SFTP session: {}", e))?;
+
+        let remote_inject_path = "/home/deck/.local/share/SLSsteam/library-inject.so";
+        let mut remote_inject = sftp2
+            .create(Path::new(remote_inject_path))
+            .map_err(|e| format!("Failed to create remote file: {}", e))?;
+
+        remote_inject
+            .write_all(&inject_bytes)
+            .map_err(|e| format!("Failed to write library-inject.so: {}", e))?;
+        drop(remote_inject);
+
+        ssh_exec(&sess, "chmod 755 ~/.local/share/SLSsteam/library-inject.so")?;
+        log.push_str("library-inject.so uploaded.\n");
+    }
+
     // Step 5: Create user applications directory
     ssh_exec(&sess, "mkdir -p ~/.local/share/applications")?;
 
     // Step 6: Copy and modify steam.desktop
     log.push_str("Modifying steam.desktop...\n");
+    // LD_AUDIT needs both library-inject.so and SLSsteam.so for proper functionality
     let desktop_cmd = r#"
         if [ -f /usr/share/applications/steam.desktop ]; then
             cp /usr/share/applications/steam.desktop ~/.local/share/applications/
-            sed -i 's|^Exec=/|Exec=env LD_AUDIT="/home/deck/.local/share/SLSsteam/SLSsteam.so" /|' ~/.local/share/applications/steam.desktop
+            # Check if library-inject.so exists and use both if available
+            if [ -f ~/.local/share/SLSsteam/library-inject.so ]; then
+                sed -i 's|^Exec=/|Exec=env LD_AUDIT="/home/deck/.local/share/SLSsteam/library-inject.so:/home/deck/.local/share/SLSsteam/SLSsteam.so" /|' ~/.local/share/applications/steam.desktop
+            else
+                sed -i 's|^Exec=/|Exec=env LD_AUDIT="/home/deck/.local/share/SLSsteam/SLSsteam.so" /|' ~/.local/share/applications/steam.desktop
+            fi
             echo 'DESKTOP_OK'
         else
             echo 'DESKTOP_SKIP'
@@ -3251,9 +3354,23 @@ ExtendedLogging: no
     log.push_str("Backup created.\n");
 
     // Patch steam-jupiter: replace exec with exec env LD_AUDIT=...
+    // Check if library-inject.so exists on remote first
+    let check_inject = ssh_exec(
+        &sess,
+        "test -f ~/.local/share/SLSsteam/library-inject.so && echo 'EXISTS' || echo 'MISSING'",
+    );
+    let ld_audit_remote = if check_inject
+        .as_ref()
+        .map(|s| s.contains("EXISTS"))
+        .unwrap_or(false)
+    {
+        "/home/deck/.local/share/SLSsteam/library-inject.so:/home/deck/.local/share/SLSsteam/SLSsteam.so"
+    } else {
+        "/home/deck/.local/share/SLSsteam/SLSsteam.so"
+    };
     let patch_cmd = format!(
-        r#"echo '{}' | sudo -S sed -i 's|^exec /usr/lib/steam/steam|exec env LD_AUDIT="/home/deck/.local/share/SLSsteam/SLSsteam.so" /usr/lib/steam/steam|' /usr/bin/steam-jupiter 2>&1"#,
-        root_password
+        r#"echo '{}' | sudo -S sed -i 's|^exec /usr/lib/steam/steam|exec env LD_AUDIT="{}" /usr/lib/steam/steam|' /usr/bin/steam-jupiter 2>&1"#,
+        root_password, ld_audit_remote
     );
     let patch_result = ssh_exec(&sess, &patch_cmd)?;
     log.push_str(&format!("Patch result: {}\n", patch_result.trim()));
@@ -3444,6 +3561,15 @@ pub async fn fetch_latest_slssteam() -> Result<String, String> {
     let so_dest = cache_dir.join("SLSsteam.so");
     std::fs::copy(&so_source, &so_dest)
         .map_err(|e| format!("Failed to copy SLSsteam.so: {}", e))?;
+
+    // 5b. Also copy library-inject.so if it exists
+    let inject_source = extract_dir.join("bin/library-inject.so");
+    if inject_source.exists() {
+        let inject_dest = cache_dir.join("library-inject.so");
+        std::fs::copy(&inject_source, &inject_dest)
+            .map_err(|e| format!("Failed to copy library-inject.so: {}", e))?;
+        eprintln!("[SLSsteam] Also extracted library-inject.so");
+    }
 
     // 6. Save version (tag_name from release, e.g., "20251206112936")
     let version_file = cache_dir.join("version.txt");
@@ -4102,8 +4228,9 @@ pub async fn copy_game_to_remote(
                     }
                 }
 
-                // Add app to config
-                let new_config = add_app_to_config(&content, &app_id)?;
+                // Add app to config (with game name as comment)
+                let new_config =
+                    crate::install_manager::add_app_to_config_yaml(&content, &app_id, &game_name);
 
                 // Write back
                 if let Ok(mut channel) = sess.channel_session() {
@@ -4114,6 +4241,69 @@ pub async fn copy_game_to_remote(
                         let _ = channel.write_all(new_config.as_bytes());
                         let _ = channel.send_eof();
                         let _ = channel.wait_close();
+                    }
+                }
+
+                // Copy decryption keys from local config.vdf to remote
+                // Depot IDs are typically in the range [app_id, app_id+100]
+                if let Some(home) = dirs::home_dir() {
+                    let config_vdf_paths = [
+                        home.join(".steam/steam/config/config.vdf"),
+                        home.join(".local/share/Steam/config/config.vdf"),
+                    ];
+
+                    for config_vdf_path in config_vdf_paths {
+                        if config_vdf_path.exists() {
+                            if let Ok(config_vdf_content) =
+                                std::fs::read_to_string(&config_vdf_path)
+                            {
+                                // Extract keys for all depots in the app_id range
+                                let depot_keys = crate::config_vdf::extract_depot_keys_by_app_id(
+                                    &config_vdf_content,
+                                    &app_id,
+                                );
+
+                                if !depot_keys.is_empty() {
+                                    eprintln!(
+                                        "[copy_game_to_remote] Found {} decryption keys for app {}",
+                                        depot_keys.len(),
+                                        app_id
+                                    );
+
+                                    // Read remote config.vdf
+                                    let mut remote_config_vdf = String::new();
+                                    if let Ok(mut channel) = sess.channel_session() {
+                                        if channel.exec("cat ~/.steam/steam/config/config.vdf 2>/dev/null || echo ''").is_ok() {
+                                            let _ = channel.read_to_string(&mut remote_config_vdf);
+                                            let _ = channel.wait_close();
+                                        }
+                                    }
+
+                                    // Add keys to remote config.vdf
+                                    let new_remote_config =
+                                        crate::config_vdf::add_decryption_keys_to_vdf(
+                                            &remote_config_vdf,
+                                            &depot_keys,
+                                        );
+
+                                    // Write back to remote
+                                    if let Ok(mut channel) = sess.channel_session() {
+                                        if channel
+                                            .exec("cat > ~/.steam/steam/config/config.vdf")
+                                            .is_ok()
+                                        {
+                                            let _ = channel.write_all(new_remote_config.as_bytes());
+                                            let _ = channel.send_eof();
+                                            let _ = channel.wait_close();
+                                            eprintln!("[copy_game_to_remote] Added {} decryption keys to remote config.vdf", depot_keys.len());
+                                        }
+                                    }
+                                } else {
+                                    eprintln!("[copy_game_to_remote] No decryption keys found for app {} in local config.vdf", app_id);
+                                }
+                            }
+                            break; // Only process one config.vdf
+                        }
                     }
                 }
 
@@ -4644,6 +4834,336 @@ echo "SYMLINK_CORRECT=$SYMLINK_CORRECT"
         source_path: source.to_string(),
         target_path: "~/.steam/steam/ubuntu12_32/libcurl.so.4".to_string(),
     })
+}
+
+// ============================================================================
+// DEPOT KEYS ONLY INSTALL COMMAND
+// ============================================================================
+
+/// Depot info for depot keys only install
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DepotKeyInfo {
+    pub depot_id: String,
+    pub manifest_id: String,
+    pub manifest_path: String,
+    pub key: String,
+}
+
+/// Install depot keys only (no download) - configures Steam to recognize game
+/// This adds decryption keys to config.vdf, copies manifests to depotcache,
+/// creates ACF with StateFlags=6, and updates SLSsteam config.
+/// After this, steam://install/{appid} will work.
+#[tauri::command]
+pub async fn install_depot_keys_only(
+    app_id: String,
+    game_name: String,
+    depots: Vec<DepotKeyInfo>,
+    ssh_config: SshConfig,
+    target_library: String, // e.g. ~/.steam/steam or /home/deck/.steam/steam
+    trigger_steam_install: bool, // If true, run xdg-open steam://install/{appid}
+) -> Result<String, String> {
+    use crate::config_vdf;
+    use std::io::Read;
+
+    eprintln!(
+        "[DepotKeysOnly] Starting for {} ({}) with {} depots",
+        game_name,
+        app_id,
+        depots.len()
+    );
+    eprintln!(
+        "[DepotKeysOnly] Target library: {}, is_local: {}",
+        target_library, ssh_config.is_local
+    );
+
+    // Prepare depot keys for config.vdf
+    let depot_keys: Vec<(String, String)> = depots
+        .iter()
+        .filter(|d| !d.key.is_empty())
+        .map(|d| (d.depot_id.clone(), d.key.clone()))
+        .collect();
+
+    // Derive paths from target_library
+    // target_library is like ~/.steam/steam or /home/deck/.steam/steam
+    let steam_root = target_library
+        .trim_end_matches('/')
+        .trim_end_matches("/steamapps/common");
+    let steam_root = steam_root.trim_end_matches("/steamapps");
+    let config_vdf_path = format!("{}/config/config.vdf", steam_root);
+    let depotcache_path = format!("{}/depotcache", steam_root);
+    let steamapps_path = format!("{}/steamapps", steam_root);
+
+    eprintln!(
+        "[DepotKeysOnly] Paths: config_vdf={}, depotcache={}, steamapps={}",
+        config_vdf_path, depotcache_path, steamapps_path
+    );
+
+    if ssh_config.is_local {
+        // ====== LOCAL MODE ======
+
+        // 1. Add decryption keys to config.vdf
+        let config_vdf_expanded = shellexpand::tilde(&config_vdf_path).to_string();
+        eprintln!(
+            "[DepotKeysOnly] Reading local config.vdf: {}",
+            config_vdf_expanded
+        );
+
+        let config_content =
+            std::fs::read_to_string(&config_vdf_expanded).unwrap_or_else(|_| String::new());
+
+        if !depot_keys.is_empty() {
+            let new_config = config_vdf::add_decryption_keys_to_vdf(&config_content, &depot_keys);
+            std::fs::write(&config_vdf_expanded, &new_config)
+                .map_err(|e| format!("Failed to write config.vdf: {}", e))?;
+            eprintln!(
+                "[DepotKeysOnly] Updated config.vdf with {} depot keys",
+                depot_keys.len()
+            );
+        }
+
+        // 2. Copy .manifest files to depotcache
+        let depotcache_expanded = shellexpand::tilde(&depotcache_path).to_string();
+        std::fs::create_dir_all(&depotcache_expanded)
+            .map_err(|e| format!("Failed to create depotcache: {}", e))?;
+
+        for depot in &depots {
+            if !depot.manifest_path.is_empty()
+                && std::path::Path::new(&depot.manifest_path).exists()
+            {
+                let manifest_filename =
+                    format!("{}_{}.manifest", depot.depot_id, depot.manifest_id);
+                let dest_path = format!("{}/{}", depotcache_expanded, manifest_filename);
+                std::fs::copy(&depot.manifest_path, &dest_path)
+                    .map_err(|e| format!("Failed to copy manifest: {}", e))?;
+                eprintln!("[DepotKeysOnly] Copied manifest: {}", manifest_filename);
+            }
+        }
+
+        // 3. Create ACF with StateFlags=6
+        let acf_content = build_acf_state_flags_6(&app_id, &game_name);
+        let acf_path =
+            shellexpand::tilde(&format!("{}/appmanifest_{}.acf", steamapps_path, app_id))
+                .to_string();
+        std::fs::write(&acf_path, &acf_content)
+            .map_err(|e| format!("Failed to write ACF: {}", e))?;
+        eprintln!("[DepotKeysOnly] Created ACF: {}", acf_path);
+
+        // 4. Update SLSsteam config
+        let slssteam_config = shellexpand::tilde("~/.config/SLSsteam/config.yaml").to_string();
+        if std::path::Path::new(&slssteam_config).exists() {
+            if let Ok(content) = std::fs::read_to_string(&slssteam_config) {
+                let new_config =
+                    crate::install_manager::add_app_to_config_yaml(&content, &app_id, &game_name);
+                let _ = std::fs::write(&slssteam_config, &new_config);
+                eprintln!("[DepotKeysOnly] Updated SLSsteam config");
+            }
+        }
+
+        // 5. Trigger steam://install if requested (local - just open URL)
+        // Note: May show SLSsteam.so error message but Steam will still run with SLSsteam working
+        if trigger_steam_install {
+            let steam_url = format!("steam://install/{}", app_id);
+            let _ = std::process::Command::new("xdg-open")
+                .arg(&steam_url)
+                .spawn();
+            eprintln!("[DepotKeysOnly] Triggered: {}", steam_url);
+        }
+    } else {
+        // ====== REMOTE MODE (SSH) ======
+
+        let addr = format!("{}:{}", ssh_config.ip, ssh_config.port);
+        let tcp = TcpStream::connect_timeout(
+            &addr
+                .parse()
+                .map_err(|e| format!("Invalid address: {}", e))?,
+            Duration::from_secs(10),
+        )
+        .map_err(|e| format!("SSH connection failed: {}", e))?;
+
+        let mut sess =
+            ssh2::Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
+        sess.set_tcp_stream(tcp);
+        sess.handshake()
+            .map_err(|e| format!("SSH handshake failed: {}", e))?;
+        sess.userauth_password(&ssh_config.username, &ssh_config.password)
+            .map_err(|e| format!("SSH auth failed: {}", e))?;
+
+        // 1. Add decryption keys to config.vdf
+        if !depot_keys.is_empty() {
+            // Read existing config.vdf
+            let mut config_content = String::new();
+            if let Ok(mut channel) = sess.channel_session() {
+                let cmd = format!("cat \"{}\" 2>/dev/null || echo ''", config_vdf_path);
+                if channel.exec(&cmd).is_ok() {
+                    let _ = channel.read_to_string(&mut config_content);
+                    let _ = channel.wait_close();
+                }
+            }
+
+            // Modify and write back
+            let new_config = config_vdf::add_decryption_keys_to_vdf(&config_content, &depot_keys);
+
+            if let Ok(mut channel) = sess.channel_session() {
+                let cmd = format!(
+                    "mkdir -p \"$(dirname '{}')\" && cat > \"{}\"",
+                    config_vdf_path, config_vdf_path
+                );
+                if channel.exec(&cmd).is_ok() {
+                    let _ = channel.write_all(new_config.as_bytes());
+                    let _ = channel.send_eof();
+                    let _ = channel.wait_close();
+                    eprintln!(
+                        "[DepotKeysOnly] Updated remote config.vdf with {} keys",
+                        depot_keys.len()
+                    );
+                }
+            }
+        }
+
+        // 2. Create depotcache directory on remote
+        if let Ok(mut channel) = sess.channel_session() {
+            let cmd = format!("mkdir -p \"{}\"", depotcache_path);
+            let _ = channel.exec(&cmd);
+            let _ = channel.wait_close();
+        }
+
+        // 3. Copy .manifest files to remote depotcache via SCP
+        for depot in &depots {
+            if !depot.manifest_path.is_empty()
+                && std::path::Path::new(&depot.manifest_path).exists()
+            {
+                let manifest_filename =
+                    format!("{}_{}.manifest", depot.depot_id, depot.manifest_id);
+                let remote_path = format!("{}/{}", depotcache_path, manifest_filename);
+
+                // Read local file
+                if let Ok(content) = std::fs::read(&depot.manifest_path) {
+                    // SCP to remote using SFTP
+                    if let Ok(sftp) = sess.sftp() {
+                        if let Ok(mut remote_file) = sftp.create(std::path::Path::new(&remote_path))
+                        {
+                            let _ = remote_file.write_all(&content);
+                            eprintln!(
+                                "[DepotKeysOnly] Copied manifest to remote: {}",
+                                manifest_filename
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Create ACF with StateFlags=6 on remote
+        let acf_content = build_acf_state_flags_6(&app_id, &game_name);
+        let acf_remote_path = format!("{}/appmanifest_{}.acf", steamapps_path, app_id);
+
+        if let Ok(mut channel) = sess.channel_session() {
+            let cmd = format!("cat > \"{}\"", acf_remote_path);
+            if channel.exec(&cmd).is_ok() {
+                let _ = channel.write_all(acf_content.as_bytes());
+                let _ = channel.send_eof();
+                let _ = channel.wait_close();
+                eprintln!("[DepotKeysOnly] Created remote ACF: {}", acf_remote_path);
+            }
+        }
+
+        // 5. Update SLSsteam config on remote
+        let mut slssteam_content = String::new();
+        if let Ok(mut channel) = sess.channel_session() {
+            if channel
+                .exec("cat ~/.config/SLSsteam/config.yaml 2>/dev/null || echo ''")
+                .is_ok()
+            {
+                let _ = channel.read_to_string(&mut slssteam_content);
+                let _ = channel.wait_close();
+            }
+        }
+
+        let new_slssteam =
+            crate::install_manager::add_app_to_config_yaml(&slssteam_content, &app_id, &game_name);
+        if let Ok(mut channel) = sess.channel_session() {
+            if channel
+                .exec("mkdir -p ~/.config/SLSsteam && cat > ~/.config/SLSsteam/config.yaml")
+                .is_ok()
+            {
+                let _ = channel.write_all(new_slssteam.as_bytes());
+                let _ = channel.send_eof();
+                let _ = channel.wait_close();
+                eprintln!("[DepotKeysOnly] Updated remote SLSsteam config");
+            }
+        }
+
+        // 6. Trigger steam://install on remote if requested
+        if trigger_steam_install {
+            let steam_url = format!("steam://install/{}", app_id);
+            // Try to trigger on remote - need DISPLAY for xdg-open to work
+            if let Ok(mut channel) = sess.channel_session() {
+                let cmd = format!(
+                    "DISPLAY=:0 xdg-open '{}' 2>/dev/null || DISPLAY=:1 xdg-open '{}' 2>/dev/null || echo 'xdg-open failed'",
+                    steam_url, steam_url
+                );
+                let _ = channel.exec(&cmd);
+                let mut output = String::new();
+                let _ = channel.read_to_string(&mut output);
+                let _ = channel.wait_close();
+                eprintln!(
+                    "[DepotKeysOnly] Triggered remote: {} (output: {})",
+                    steam_url,
+                    output.trim()
+                );
+            }
+        }
+    }
+
+    Ok(format!(
+        "Successfully configured {} depots for {}",
+        depots.len(),
+        game_name
+    ))
+}
+
+/// Build ACF content with StateFlags=6 (Update Required)
+fn build_acf_state_flags_6(app_id: &str, game_name: &str) -> String {
+    // Sanitize game name for installdir
+    let install_dir: String = game_name
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-' || *c == '_')
+        .collect();
+    let install_dir = install_dir.trim();
+    let install_dir = if install_dir.is_empty() {
+        app_id
+    } else {
+        install_dir
+    };
+
+    format!(
+        r#""AppState"
+{{
+	"appid"		"{app_id}"
+	"Universe"		"1"
+	"name"		"{game_name}"
+	"StateFlags"		"6"
+	"installdir"		"{install_dir}"
+	"SizeOnDisk"		"0"
+	"buildid"		"0"
+	"InstalledDepots"
+	{{
+	}}
+	"UserConfig"
+	{{
+		"platform_override_dest"		"linux"
+		"platform_override_source"		"windows"
+	}}
+	"MountedConfig"
+	{{
+		"platform_override_dest"		"linux"
+		"platform_override_source"		"windows"
+	}}
+}}"#,
+        app_id = app_id,
+        game_name = game_name,
+        install_dir = install_dir
+    )
 }
 
 #[cfg(test)]

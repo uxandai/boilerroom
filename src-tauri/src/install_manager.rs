@@ -213,6 +213,7 @@ impl InstallManager {
         game_name: String,
         depots: Vec<DepotDownloadArg>,
         keys_file: PathBuf,
+        depot_keys: Vec<(String, String)>, // (depot_id, key) pairs for config.vdf
         depot_downloader_path: String,
         steamless_path: String, 
         ssh_config: SshConfig,
@@ -252,6 +253,7 @@ impl InstallManager {
         let folder_name_clone = folder_name.clone();
         let target_dir = target_directory.clone();
         let download_dir_clone = download_dir.clone();
+        let depot_keys_clone = depot_keys.clone();
 
         thread::spawn(move || {
             // ========================================
@@ -345,9 +347,10 @@ impl InstallManager {
                             if let Some(pct_match) = caps.get(1) {
                                 if let Ok(depot_pct) = pct_match.as_str().parse::<f64>() {
                                     // Calculate overall progress: (completed_depots * 100 + current_depot_pct) / total_depots
-                                    // Then scale to 0-50% (download is first half)
                                     let raw_pct = ((depot_idx as f64 * 100.0) + depot_pct) / (total_depots as f64);
-                                    let overall_pct = raw_pct * 0.5; // Scale to 0-50%
+                                    // For local installs: download is 100% of progress (no rsync)
+                                    // For remote installs: download is 0-50%, rsync is 50-100%
+                                    let overall_pct = if is_local { raw_pct } else { raw_pct * 0.5 };
                                     eprintln!("[DDMod] Depot {} progress: {:.1}%, Overall: {:.1}%", depot.depot_id, depot_pct, overall_pct);
                                     m.update_download_percent(overall_pct);
                                 }
@@ -373,7 +376,8 @@ impl InstallManager {
             }
 
             m.update_status("downloading", "Download complete!");
-            m.update_download_percent(50.0); // Download is 0-50%, transfer will be 50-100%
+            // For local installs: download complete = 100%, for remote: 50% (rsync will be 50-100%)
+            m.update_download_percent(if is_local { 100.0 } else { 50.0 });
 
             // ========================================
             // PHASE 2: STEAMLESS (largest .exe only)
@@ -724,6 +728,70 @@ impl InstallManager {
             }
 
             // ========================================
+            // PHASE 5b: ADD DECRYPTION KEYS TO config.vdf
+            // ========================================
+            if !depot_keys_clone.is_empty() {
+                use crate::config_vdf;
+                
+                if ssh_config.is_local {
+                    // Local: update config.vdf directly
+                    if let Some(home) = dirs::home_dir() {
+                        // Try common Steam paths
+                        let steam_paths = [
+                            home.join(".steam/steam/config/config.vdf"),
+                            home.join(".local/share/Steam/config/config.vdf"),
+                        ];
+                        
+                        for config_path in steam_paths {
+                            if config_path.exists() {
+                                if let Ok(content) = std::fs::read_to_string(&config_path) {
+                                    let new_config = config_vdf::add_decryption_keys_to_vdf(&content, &depot_keys_clone);
+                                    if std::fs::write(&config_path, &new_config).is_ok() {
+                                        eprintln!("[config.vdf] Added {} decryption keys to {:?}", depot_keys_clone.len(), config_path);
+                                    }
+                                }
+                                break; // Only update one config.vdf
+                            }
+                        }
+                    }
+                } else {
+                    // Remote: update config.vdf via SSH
+                    use std::net::TcpStream;
+                    use std::time::Duration;
+                    use std::io::Read;
+                    
+                    let addr = format!("{}:{}", ssh_config.ip, ssh_config.port);
+                    if let Ok(tcp) = TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(10)) {
+                        if let Ok(mut sess) = ssh2::Session::new() {
+                            sess.set_tcp_stream(tcp);
+                            if sess.handshake().is_ok() && sess.userauth_password(&ssh_config.username, &ssh_config.password).is_ok() {
+                                // Read existing config.vdf
+                                let mut content = String::new();
+                                if let Ok(mut channel) = sess.channel_session() {
+                                    if channel.exec("cat ~/.steam/steam/config/config.vdf 2>/dev/null || echo ''").is_ok() {
+                                        let _ = channel.read_to_string(&mut content);
+                                        let _ = channel.wait_close();
+                                    }
+                                }
+                                
+                                let new_config = config_vdf::add_decryption_keys_to_vdf(&content, &depot_keys_clone);
+                                
+                                // Write back
+                                if let Ok(mut channel) = sess.channel_session() {
+                                    if channel.exec("cat > ~/.steam/steam/config/config.vdf").is_ok() {
+                                        let _ = channel.write_all(new_config.as_bytes());
+                                        let _ = channel.send_eof();
+                                        let _ = channel.wait_close();
+                                        eprintln!("[config.vdf] Added {} decryption keys on remote", depot_keys_clone.len());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ========================================
             // PHASE 6: CREATE STEAM ACF MANIFEST
             // ========================================
             m.update_status("configuring", "Creating Steam manifest...");
@@ -846,7 +914,7 @@ impl InstallManager {
 
 /// Helper function to add AppID to SLSsteam config.yaml
 /// Uses text-based insertion to preserve comments
-fn add_app_to_config_yaml(content: &str, app_id: &str, game_name: &str) -> String {
+pub fn add_app_to_config_yaml(content: &str, app_id: &str, game_name: &str) -> String {
     // Check if app_id already exists
     if content.contains(&format!("- {}", app_id)) {
         return content.to_string();
