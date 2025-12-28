@@ -1535,42 +1535,6 @@ pub async fn update_slssteam_config(
     Ok(())
 }
 
-/// Helper function to add AppID to config YAML
-/// Uses text-based insertion to preserve comments
-fn add_app_to_config(content: &str, app_id: &str) -> Result<String, String> {
-    // Check if app_id already exists
-    if content.contains(&format!("- {}", app_id)) {
-        return Ok(content.to_string());
-    }
-
-    // Find AdditionalApps section
-    if let Some(idx) = content.find("AdditionalApps:") {
-        // Find the end of AdditionalApps line
-        let after_key = &content[idx..];
-        if let Some(newline_idx) = after_key.find('\n') {
-            let insert_pos = idx + newline_idx + 1;
-
-            // Insert the new entry (no indentation needed for YAML list items)
-            let new_entry = format!("- {}\n", app_id);
-
-            let mut result = String::with_capacity(content.len() + new_entry.len());
-            result.push_str(&content[..insert_pos]);
-            result.push_str(&new_entry);
-            result.push_str(&content[insert_pos..]);
-            return Ok(result);
-        }
-    }
-
-    // No AdditionalApps section - append it
-    let mut result = content.to_string();
-    if !result.ends_with('\n') && !result.is_empty() {
-        result.push('\n');
-    }
-    result.push_str("\nAdditionalApps:\n");
-    result.push_str(&format!("- {}\n", app_id));
-    Ok(result)
-}
-
 // ============================================================================
 // LIBRARY MANAGEMENT COMMANDS
 // ============================================================================
@@ -5164,41 +5128,4 @@ fn build_acf_state_flags_6(app_id: &str, game_name: &str) -> String {
         game_name = game_name,
         install_dir = install_dir
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_add_app_empty_config() {
-        let result = add_app_to_config("", "12345").unwrap();
-        assert!(result.contains("AdditionalApps"));
-        assert!(result.contains("12345"));
-    }
-
-    #[test]
-    fn test_add_app_existing_config() {
-        let existing = "SomeKey: value\nAdditionalApps:\n  - 11111\n";
-        let result = add_app_to_config(existing, "22222").unwrap();
-        assert!(result.contains("11111"));
-        assert!(result.contains("22222"));
-    }
-
-    #[test]
-    fn test_add_app_no_duplicate() {
-        let existing = "AdditionalApps:\n  - 12345\n";
-        let result = add_app_to_config(existing, "12345").unwrap();
-        // Should only appear once
-        let count = result.matches("12345").count();
-        assert_eq!(count, 1);
-    }
-
-    #[test]
-    fn test_add_app_creates_list() {
-        let existing = "SomeOtherKey: true\n";
-        let result = add_app_to_config(existing, "99999").unwrap();
-        assert!(result.contains("AdditionalApps"));
-        assert!(result.contains("99999"));
-    }
 }
