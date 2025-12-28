@@ -4,8 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RefreshCw, Trash2, FolderOpen, AlertCircle, Loader2, Search, Upload } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
-import { listInstalledGames, listInstalledGamesLocal, fetchSteamGridDbArtwork, type InstalledGame } from "@/lib/api";
+import { useState, useEffect, useRef, useMemo } from "react";
+import {
+  listInstalledGames,
+  listInstalledGamesLocal,
+  fetchSteamGridDbArtwork,
+  getCachedArtworkPath,
+  cacheArtwork,
+  uninstallGame,
+  type InstalledGame
+} from "@/lib/api";
 import { CopyToRemoteModal } from "@/components/CopyToRemoteModal";
 
 export function LibraryPanel() {
@@ -75,8 +83,6 @@ export function LibraryPanel() {
 
   // Load artworks with disk caching - check cache first, then fetch and cache
   const fetchArtworksWithCache = async (gamesList: InstalledGame[]) => {
-    const { getCachedArtworkPath, cacheArtwork } = await import("@/lib/api");
-
     for (const game of gamesList) {
       if (game.app_id && game.app_id !== "unknown") {
         // Skip if already in memory
@@ -141,6 +147,10 @@ export function LibraryPanel() {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
+  const filteredGames = useMemo(() => {
+    return games.filter(game => !showOnlyTonTonDeck || game.has_depotdownloader_marker);
+  }, [games, showOnlyTonTonDeck]);
+
   return (
     <div className="space-y-6">
       <Card className="bg-[#1b2838] border-[#2a475e]">
@@ -204,9 +214,7 @@ export function LibraryPanel() {
 
           {games.length > 0 && (
             <div className="space-y-2">
-              {games
-                .filter(game => !showOnlyTonTonDeck || game.has_depotdownloader_marker)
-                .map((game) => (
+              {filteredGames.map((game) => (
                   <div
                     key={game.app_id}
                     className="bg-[#171a21] border border-[#0a0a0a] p-3 flex items-center justify-between hover:bg-[#1b2838] transition-colors"
@@ -264,7 +272,6 @@ export function LibraryPanel() {
                         onClick={async () => {
                           if (!confirm(`Are you sure you want to uninstall ${game.name}?`)) return;
                           try {
-                            const { uninstallGame } = await import("@/lib/api");
                             // Use correct config based on connection mode
                             const configForUninstall = { ...sshConfig };
                             if (connectionMode === "local") {
