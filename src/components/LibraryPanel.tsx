@@ -74,36 +74,73 @@ export function LibraryPanel() {
   };
 
   // Load artworks with disk caching - check cache first, then fetch and cache
+  // ⚡ Optimization: Batched processing to reduce re-renders and parallelize disk I/O
   const fetchArtworksWithCache = async (gamesList: InstalledGame[]) => {
     const { getCachedArtworkPath, cacheArtwork } = await import("@/lib/api");
 
-    for (const game of gamesList) {
-      if (game.app_id && game.app_id !== "unknown") {
-        // Skip if already in memory
-        if (artworkMap.has(game.app_id)) continue;
+    // Filter games that need artwork
+    const gamesToProcess = gamesList.filter(
+      game => game.app_id && game.app_id !== "unknown" && !artworkMap.has(game.app_id)
+    );
 
+    // Process in batches to balance speed and responsiveness
+    const BATCH_SIZE = 20;
+
+    for (let i = 0; i < gamesToProcess.length; i += BATCH_SIZE) {
+      const batch = gamesToProcess.slice(i, i + BATCH_SIZE);
+      const newArtworks = new Map<string, string>();
+
+      // 1. Check disk cache in parallel
+      await Promise.all(batch.map(async (game) => {
         try {
-          // 1. Check disk cache first
           const cachedPath = await getCachedArtworkPath(game.app_id);
           if (cachedPath) {
-            // Use asset protocol to serve local file
-            const assetUrl = `asset://localhost/${cachedPath}`;
-            setArtworkMap(prev => new Map(prev).set(game.app_id, assetUrl));
-            continue;
-          }
-
-          // 2. No cache - fetch from SteamGridDB if API key available
-          if (settings.steamGridDbApiKey) {
-            const artwork = await fetchSteamGridDbArtwork(settings.steamGridDbApiKey, game.app_id);
-            if (artwork) {
-              // 3. Cache to disk
-              const localPath = await cacheArtwork(game.app_id, artwork);
-              const assetUrl = `asset://localhost/${localPath}`;
-              setArtworkMap(prev => new Map(prev).set(game.app_id, assetUrl));
-            }
+            newArtworks.set(game.app_id, `asset://localhost/${cachedPath}`);
           }
         } catch {
-          // Ignore artwork errors
+          // Ignore errors
+        }
+      }));
+
+      // Update state if we found cached artworks
+      if (newArtworks.size > 0) {
+        setArtworkMap(prev => {
+          const next = new Map(prev);
+          newArtworks.forEach((url, appId) => next.set(appId, url));
+          return next;
+        });
+      }
+
+      // 2. For games not in cache, fetch from network (sequential to respect rate limits/logic)
+      // Only if we have an API key
+      if (settings.steamGridDbApiKey) {
+        const missingGames = batch.filter(g => !newArtworks.has(g.app_id));
+
+        // Process network fetches in smaller sub-batches to avoid flooding
+        const NETWORK_BATCH_SIZE = 5;
+        for (let j = 0; j < missingGames.length; j += NETWORK_BATCH_SIZE) {
+          const netBatch = missingGames.slice(j, j + NETWORK_BATCH_SIZE);
+          const netArtworks = new Map<string, string>();
+
+          await Promise.all(netBatch.map(async (game) => {
+            try {
+              const artwork = await fetchSteamGridDbArtwork(settings.steamGridDbApiKey!, game.app_id);
+              if (artwork) {
+                const localPath = await cacheArtwork(game.app_id, artwork);
+                netArtworks.set(game.app_id, `asset://localhost/${localPath}`);
+              }
+            } catch {
+              // Ignore network errors
+            }
+          }));
+
+          if (netArtworks.size > 0) {
+            setArtworkMap(prev => {
+              const next = new Map(prev);
+              netArtworks.forEach((url, appId) => next.set(appId, url));
+              return next;
+            });
+          }
         }
       }
     }
