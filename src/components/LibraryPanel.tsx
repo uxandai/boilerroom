@@ -76,20 +76,23 @@ export function LibraryPanel() {
   // Load artworks with disk caching - check cache first, then fetch and cache
   const fetchArtworksWithCache = async (gamesList: InstalledGame[]) => {
     const { getCachedArtworkPath, cacheArtwork } = await import("@/lib/api");
+    const CHUNK_SIZE = 20;
 
-    for (const game of gamesList) {
-      if (game.app_id && game.app_id !== "unknown") {
-        // Skip if already in memory
-        if (artworkMap.has(game.app_id)) continue;
+    for (let i = 0; i < gamesList.length; i += CHUNK_SIZE) {
+      const chunk = gamesList.slice(i, i + CHUNK_SIZE);
+      const updates: [string, string][] = [];
+
+      await Promise.all(chunk.map(async (game) => {
+        if (!game.app_id || game.app_id === "unknown") return;
+        // Skip if already in memory (check closure state)
+        if (artworkMap.has(game.app_id)) return;
 
         try {
           // 1. Check disk cache first
           const cachedPath = await getCachedArtworkPath(game.app_id);
           if (cachedPath) {
-            // Use asset protocol to serve local file
-            const assetUrl = `asset://localhost/${cachedPath}`;
-            setArtworkMap(prev => new Map(prev).set(game.app_id, assetUrl));
-            continue;
+            updates.push([game.app_id, `asset://localhost/${cachedPath}`]);
+            return;
           }
 
           // 2. No cache - fetch from SteamGridDB if API key available
@@ -98,13 +101,21 @@ export function LibraryPanel() {
             if (artwork) {
               // 3. Cache to disk
               const localPath = await cacheArtwork(game.app_id, artwork);
-              const assetUrl = `asset://localhost/${localPath}`;
-              setArtworkMap(prev => new Map(prev).set(game.app_id, assetUrl));
+              updates.push([game.app_id, `asset://localhost/${localPath}`]);
             }
           }
         } catch {
           // Ignore artwork errors
         }
+      }));
+
+      // Batch update state for this chunk to reduce re-renders
+      if (updates.length > 0) {
+        setArtworkMap(prev => {
+          const next = new Map(prev);
+          updates.forEach(([id, url]) => next.set(id, url));
+          return next;
+        });
       }
     }
   };
