@@ -77,19 +77,28 @@ export function LibraryPanel() {
   const fetchArtworksWithCache = async (gamesList: InstalledGame[]) => {
     const { getCachedArtworkPath, cacheArtwork } = await import("@/lib/api");
 
-    for (const game of gamesList) {
-      if (game.app_id && game.app_id !== "unknown") {
-        // Skip if already in memory
-        if (artworkMap.has(game.app_id)) continue;
+    // Filter out games that already have artwork or invalid app_ids
+    const gamesToProcess = gamesList.filter(game =>
+      game.app_id && game.app_id !== "unknown" && !artworkMap.has(game.app_id)
+    );
 
+    // Process in batches to avoid overwhelming the system/network
+    // Batch size of 20 allows parallel fetching while keeping UI responsive
+    const BATCH_SIZE = 20;
+
+    for (let i = 0; i < gamesToProcess.length; i += BATCH_SIZE) {
+      const batch = gamesToProcess.slice(i, i + BATCH_SIZE);
+      const newArtworks = new Map<string, string>();
+
+      // Execute batch in parallel
+      await Promise.all(batch.map(async (game) => {
         try {
           // 1. Check disk cache first
           const cachedPath = await getCachedArtworkPath(game.app_id);
           if (cachedPath) {
             // Use asset protocol to serve local file
-            const assetUrl = `asset://localhost/${cachedPath}`;
-            setArtworkMap(prev => new Map(prev).set(game.app_id, assetUrl));
-            continue;
+            newArtworks.set(game.app_id, `asset://localhost/${cachedPath}`);
+            return;
           }
 
           // 2. No cache - fetch from SteamGridDB if API key available
@@ -98,13 +107,21 @@ export function LibraryPanel() {
             if (artwork) {
               // 3. Cache to disk
               const localPath = await cacheArtwork(game.app_id, artwork);
-              const assetUrl = `asset://localhost/${localPath}`;
-              setArtworkMap(prev => new Map(prev).set(game.app_id, assetUrl));
+              newArtworks.set(game.app_id, `asset://localhost/${localPath}`);
             }
           }
         } catch {
           // Ignore artwork errors
         }
+      }));
+
+      // Update state once per batch to reduce re-renders (N -> N/20)
+      if (newArtworks.size > 0) {
+        setArtworkMap(prev => {
+          const next = new Map(prev);
+          newArtworks.forEach((url, appId) => next.set(appId, url));
+          return next;
+        });
       }
     }
   };
