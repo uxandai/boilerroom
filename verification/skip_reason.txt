@@ -1,0 +1,1 @@
+Skipping Playwright verification as app uses Tauri APIs unavailable in standard browser
