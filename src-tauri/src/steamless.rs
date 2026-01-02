@@ -1,5 +1,10 @@
 //! Steamless integration with Proton/Wine discovery
 //! Ported from ACCELA's steamless_task.py
+//! 
+//! NOTE: This module is kept for future reference but not currently used.
+//! The GUI version of Steamless is now launched via Wine from Settings.
+
+#![allow(dead_code)]
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -495,6 +500,7 @@ where
 
 /// Full Steamless processing pipeline
 /// Discovers Wine, checks/installs .NET, runs Steamless on largest exe
+#[allow(unused_variables)]
 pub fn process_game_with_steamless<F>(
     game_directory: &Path,
     steamless_cli_path: &Path,

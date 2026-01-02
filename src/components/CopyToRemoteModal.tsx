@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, Upload, HardDrive, FolderOpen, Wifi, Check, AlertCircle } from "lucide-react";
 import { getSteamLibraries, testSshConnection, copyGameToRemote, type InstalledGame } from "@/lib/api";
+import { formatSize, sortSteamLibraries } from "@/lib/utils";
 
 interface CopyToRemoteModalProps {
     isOpen: boolean;
@@ -60,7 +61,7 @@ export function CopyToRemoteModal({ isOpen, onClose, game }: CopyToRemoteModalPr
                 loadRemoteLibraries();
             }
         }
-    }, [isOpen]);
+    }, [isOpen, sshConfig.ip, sshConfig.username, sshConfig.password, hasSshCredentials]);
 
     const handleConnect = async () => {
         if (!localIp || !localPassword) {
@@ -109,14 +110,7 @@ export function CopyToRemoteModal({ isOpen, onClose, game }: CopyToRemoteModalPr
         setIsLoadingLibraries(true);
         try {
             const libs = await getSteamLibraries(config);
-            // Sort: internal first (paths containing .steam), then SD cards
-            const sorted = libs.sort((a, b) => {
-                const aIsInternal = a.includes('.steam') || (!a.includes('mmcblk') && !a.includes('media'));
-                const bIsInternal = b.includes('.steam') || (!b.includes('mmcblk') && !b.includes('media'));
-                if (aIsInternal && !bIsInternal) return -1;
-                if (!aIsInternal && bIsInternal) return 1;
-                return 0;
-            });
+            const sorted = sortSteamLibraries(libs);
             setLibraries(sorted);
             if (sorted.length > 0) {
                 setSelectedLibrary(sorted[0]);
@@ -126,13 +120,6 @@ export function CopyToRemoteModal({ isOpen, onClose, game }: CopyToRemoteModalPr
         } finally {
             setIsLoadingLibraries(false);
         }
-    };
-
-    const formatSize = (bytes: number): string => {
-        if (bytes < 1024) return `${bytes} B`;
-        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-        return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
     };
 
     const handleCopy = async () => {

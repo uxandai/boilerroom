@@ -88,7 +88,7 @@ export function SlssteamStatusBanner() {
         const { verifySlssteam } = await import("@/lib/api");
         const remoteStatus: SlssteamStatus = await verifySlssteam(sshConfig);
 
-        if (remoteStatus.slssteam_so_exists && remoteStatus.config_exists && remoteStatus.config_play_not_owned) {
+        if (remoteStatus.slssteam_so_exists && remoteStatus.config_exists) {
           setStatus({
             isLoading: false,
             isConfigured: true,
@@ -99,7 +99,6 @@ export function SlssteamStatusBanner() {
           const missing: string[] = [];
           if (!remoteStatus.slssteam_so_exists) missing.push("SLSsteam.so");
           if (!remoteStatus.config_exists) missing.push("config.yaml");
-          if (!remoteStatus.config_play_not_owned) missing.push("PlayNotOwnedGames");
 
           setStatus({
             isLoading: false,
@@ -133,7 +132,7 @@ export function SlssteamStatusBanner() {
 
   // Auto-refresh every 15s ONLY when not configured
   useEffect(() => {
-    // Clear existing interval
+    // Clear existing interval on any dependency change (including mode change)
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -151,7 +150,7 @@ export function SlssteamStatusBanner() {
         clearInterval(intervalRef.current);
       }
     };
-  }, [status.isConfigured, status.isLoading, checkStatus]);
+  }, [status.isConfigured, status.isLoading, checkStatus, connectionMode]);
 
   const goToSettings = () => {
     setActiveTab("settings");

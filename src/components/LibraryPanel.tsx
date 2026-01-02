@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { RefreshCw, Trash2, FolderOpen, AlertCircle, Loader2, Search, Upload } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { listInstalledGames, listInstalledGamesLocal, fetchSteamGridDbArtwork, type InstalledGame } from "@/lib/api";
+import { formatSize } from "@/lib/utils";
 import { CopyToRemoteModal } from "@/components/CopyToRemoteModal";
 
 export function LibraryPanel() {
@@ -22,7 +23,13 @@ export function LibraryPanel() {
   // State for Copy to Remote modal
   const [copyToRemoteGame, setCopyToRemoteGame] = useState<InstalledGame | null>(null);
 
-  const refreshGames = async () => {
+  // Refs for preventing duplicate refreshes
+  const isRefreshingRef = useRef(false);
+  const lastRefreshTimeRef = useRef<number>(0);
+  const prevConnectionModeRef = useRef(connectionMode);
+
+  // Memoized refreshGames to avoid stale closures in useEffect
+  const refreshGames = useCallback(async () => {
     if (connectionMode === "remote" && (!sshConfig.ip || !sshConfig.password)) {
       setError("Configure SSH connection in settings");
       return;
@@ -60,10 +67,8 @@ export function LibraryPanel() {
 
       setGames(deduped);
 
-      // Fetch artwork - check disk cache first, then SteamGridDB
-      if (settings.steamGridDbApiKey || true) { // Always try to load cached artwork
-        fetchArtworksWithCache(deduped);
-      }
+      // Fetch artwork in batches for better performance
+      fetchArtworksWithCache(deduped);
     } catch (e) {
       const errorMsg = `Error loading library: ${e}`;
       setError(errorMsg);
@@ -71,75 +76,100 @@ export function LibraryPanel() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [connectionMode, sshConfig, addLog, settings.steamGridDbApiKey]);
 
-  // Load artworks with disk caching - check cache first, then fetch and cache
-  const fetchArtworksWithCache = async (gamesList: InstalledGame[]) => {
+  // Load artworks with disk caching - batched for performance
+  const fetchArtworksWithCache = useCallback(async (gamesList: InstalledGame[]) => {
     const { getCachedArtworkPath, cacheArtwork } = await import("@/lib/api");
+    const BATCH_SIZE = 5;
+    const artworkUpdates = new Map<string, string>();
 
-    for (const game of gamesList) {
-      if (game.app_id && game.app_id !== "unknown") {
-        // Skip if already in memory
-        if (artworkMap.has(game.app_id)) continue;
+    // Filter games that need artwork
+    const gamesToFetch = gamesList.filter(
+      game => game.app_id && game.app_id !== "unknown"
+    );
 
-        try {
-          // 1. Check disk cache first
-          const cachedPath = await getCachedArtworkPath(game.app_id);
-          if (cachedPath) {
-            // Use asset protocol to serve local file
-            const assetUrl = `asset://localhost/${cachedPath}`;
-            setArtworkMap(prev => new Map(prev).set(game.app_id, assetUrl));
-            continue;
-          }
+    // Process in batches for better performance
+    for (let i = 0; i < gamesToFetch.length; i += BATCH_SIZE) {
+      const batch = gamesToFetch.slice(i, i + BATCH_SIZE);
+      
+      await Promise.allSettled(
+        batch.map(async (game) => {
+          // Skip if already fetched in this batch run
+          if (artworkUpdates.has(game.app_id)) return;
 
-          // 2. No cache - fetch from SteamGridDB if API key available
-          if (settings.steamGridDbApiKey) {
-            const artwork = await fetchSteamGridDbArtwork(settings.steamGridDbApiKey, game.app_id);
-            if (artwork) {
-              // 3. Cache to disk
-              const localPath = await cacheArtwork(game.app_id, artwork);
-              const assetUrl = `asset://localhost/${localPath}`;
-              setArtworkMap(prev => new Map(prev).set(game.app_id, assetUrl));
+          try {
+            // 1. Check disk cache first
+            const cachedPath = await getCachedArtworkPath(game.app_id);
+            if (cachedPath) {
+              const assetUrl = `asset://localhost/${cachedPath}`;
+              artworkUpdates.set(game.app_id, assetUrl);
+              return;
             }
+
+            // 2. No cache - fetch from SteamGridDB if API key available
+            if (settings.steamGridDbApiKey) {
+              const artwork = await fetchSteamGridDbArtwork(settings.steamGridDbApiKey, game.app_id);
+              if (artwork) {
+                const localPath = await cacheArtwork(game.app_id, artwork);
+                const assetUrl = `asset://localhost/${localPath}`;
+                artworkUpdates.set(game.app_id, assetUrl);
+              }
+            }
+          } catch {
+            // Ignore artwork errors
           }
-        } catch {
-          // Ignore artwork errors
-        }
+        })
+      );
+
+      // Batch update state after each batch to show progress
+      if (artworkUpdates.size > 0) {
+        setArtworkMap(prev => {
+          const newMap = new Map(prev);
+          artworkUpdates.forEach((url, appId) => newMap.set(appId, url));
+          return newMap;
+        });
       }
     }
-  };
+  }, [settings.steamGridDbApiKey]);
 
-  // Track if games have been loaded
-  const hasLoadedRef = useRef(false);
-  // Track if refresh is in progress (prevents duplicate calls from StrictMode)
-  const isRefreshingRef = useRef(false);
+  // Clear games immediately when connectionMode changes to prevent stale data
+  useEffect(() => {
+    if (prevConnectionModeRef.current !== connectionMode) {
+      prevConnectionModeRef.current = connectionMode;
+      // Immediately clear stale data from previous mode
+      setGames([]);
+      setError(null);
+      setArtworkMap(new Map()); // Also clear artwork cache on mode change
+      addLog("info", `Mode changed to ${connectionMode}, clearing library...`);
+    }
+  }, [connectionMode, addLog]);
 
-  // Auto-refresh when libraryNeedsRefresh flag is set (by App.tsx on mode change/connect)
+  // Auto-refresh when libraryNeedsRefresh flag is set
   useEffect(() => {
     if (libraryNeedsRefresh && !isRefreshingRef.current) {
-      // Clear the flag first via direct store update
+      // Debounce: prevent rapid refreshes (500ms minimum between refreshes)
+      const now = Date.now();
+      if (now - lastRefreshTimeRef.current < 500) {
+        useAppStore.setState({ libraryNeedsRefresh: false });
+        return;
+      }
+      
       useAppStore.setState({ libraryNeedsRefresh: false });
+      lastRefreshTimeRef.current = now;
       isRefreshingRef.current = true;
       refreshGames().finally(() => {
         isRefreshingRef.current = false;
       });
     }
-  }, [libraryNeedsRefresh]);
+  }, [libraryNeedsRefresh, refreshGames]);
 
-  // Reset loaded state when disconnected (only for remote mode)
+  // Reset state when disconnected (only for remote mode)
   useEffect(() => {
     if (connectionMode === "remote" && connectionStatus !== "ssh_ok") {
-      hasLoadedRef.current = false;
-      setGames([]); // Clear games when disconnected in remote mode
+      setGames([]);
     }
   }, [connectionStatus, connectionMode]);
-
-  const formatSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  };
 
   return (
     <div className="space-y-6">
@@ -208,7 +238,7 @@ export function LibraryPanel() {
                 .filter(game => !showOnlyTonTonDeck || game.has_depotdownloader_marker)
                 .map((game) => (
                   <div
-                    key={game.app_id}
+                    key={game.app_id !== "unknown" ? game.app_id : game.path}
                     className="bg-[#171a21] border border-[#0a0a0a] p-3 flex items-center justify-between hover:bg-[#1b2838] transition-colors"
                   >
                     <div className="flex items-center gap-4">

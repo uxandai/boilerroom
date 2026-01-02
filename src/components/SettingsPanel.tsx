@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,8 +14,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Save, Eye, EyeOff, FolderOpen, RefreshCw, AlertCircle, Check, Loader2, Monitor, Wifi, ArrowLeftRight, CheckCircle2 } from "lucide-react";
-import { useState } from "react";
+import { Save, Eye, EyeOff, FolderOpen, RefreshCw, AlertCircle, Check, Loader2, Monitor, Wifi, ArrowLeftRight, CheckCircle2, Wrench, Shield, Download, ExternalLink, Terminal, Sparkles } from "lucide-react";
+import { useState, useEffect } from "react";
 import { saveApiKey, testSshConnection } from "@/lib/api";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -23,6 +24,8 @@ export function SettingsPanel() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [localApiKey, setLocalApiKey] = useState(settings.apiKey);
+  const [useGistKey, setUseGistKey] = useState(false);
+  const [isFetchingGistKey, setIsFetchingGistKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [isInstallingSlssteam, setIsInstallingSlssteam] = useState(false);
@@ -59,6 +62,45 @@ export function SettingsPanel() {
     symlink_correct: boolean;
   } | null>(null);
   const [isCheckingLibcurl32, setIsCheckingLibcurl32] = useState(false);
+
+  // lib32 dependencies status (local mode)
+  const [lib32DepsStatus, setLib32DepsStatus] = useState<{
+    lib32_curl_installed: boolean;
+    lib32_openssl_installed: boolean;
+    lib32_glibc_installed: boolean;
+    all_installed: boolean;
+  } | null>(null);
+  const [isCheckingLib32Deps, setIsCheckingLib32Deps] = useState(false);
+
+  // Tools: Steamless & SLSah
+  const [steamlessPath, setSteamlessPath] = useState("");
+  const [isLaunchingSteamless, setIsLaunchingSteamless] = useState(false);
+  const [slsahInstalled, setSlsahInstalled] = useState<boolean | null>(null);
+  const [isInstallingSlsah, setIsInstallingSlsah] = useState(false);
+  const [isLaunchingSlsah, setIsLaunchingSlsah] = useState(false);
+  const [isCheckingSlsah, setIsCheckingSlsah] = useState(false);
+
+  // Auto-check 32-bit dependencies when in local mode
+  useEffect(() => {
+    if (connectionMode === "local" && !lib32DepsStatus && !isCheckingLib32Deps) {
+      // Delay slightly to ensure component is fully mounted
+      const timer = setTimeout(async () => {
+        setIsCheckingLib32Deps(true);
+        try {
+          const { checkLib32Dependencies } = await import("@/lib/api");
+          // For local mode, we only need is_local: true - no SSH config needed
+          const localConfig = { ip: "", port: 22, username: "", password: "", privateKeyPath: "", is_local: true };
+          const status = await checkLib32Dependencies(localConfig);
+          setLib32DepsStatus(status);
+        } catch {
+          // Silent fail for auto-check
+        } finally {
+          setIsCheckingLib32Deps(false);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [connectionMode, lib32DepsStatus, isCheckingLib32Deps]);
 
   // Save API key to secure storage
   const handleSaveApiKey = async () => {
@@ -254,7 +296,6 @@ export function SettingsPanel() {
         addLog("info", `[LOCAL] SLSsteam.so: ${status.slssteam_so_exists ? "✅" : "❌"}`);
         addLog("info", `[LOCAL] library-inject.so: ${status.library_inject_so_exists ? "✅" : "❌"}`);
         addLog("info", `[LOCAL] config.yaml: ${status.config_exists ? "✅" : "❌"}`);
-        addLog("info", `[LOCAL] PlayNotOwnedGames: ${status.config_play_not_owned ? "✅" : "❌"}`);
         addLog("info", `[LOCAL] Desktop entry (LD_AUDIT): ${status.desktop_entry_patched ? "✅" : "❌"}`);
         addLog("info", `[LOCAL] Registered games: ${status.additional_apps_count}`);
       } else {
@@ -267,7 +308,6 @@ export function SettingsPanel() {
         addLog("info", `SLSsteam.so: ${status.slssteam_so_exists ? "✅" : "❌"}`);
         addLog("info", `library-inject.so: ${status.library_inject_so_exists ? "✅" : "⚠️"}`);
         addLog("info", `config.yaml: ${status.config_exists ? "✅" : "❌"}`);
-        addLog("info", `PlayNotOwnedGames: ${status.config_play_not_owned ? "✅" : "❌"}`);
         addLog("info", `SafeMode: ${status.config_safe_mode_on ? "✅" : "❌"}`);
         addLog("info", `steam-jupiter patched: ${status.steam_jupiter_patched ? "✅" : "❌"}`);
         addLog("info", `Desktop entry patched: ${status.desktop_entry_patched ? "✅" : "❌"}`);
@@ -277,6 +317,110 @@ export function SettingsPanel() {
       addLog("error", `Verification failed: ${error}`);
     } finally {
       setIsVerifying(false);
+    }
+  };
+
+  // Check 32-bit library dependencies (local mode only)
+  const handleCheckLib32Dependencies = async () => {
+    if (connectionMode !== "local") {
+      return; // Only relevant for local mode
+    }
+    
+    setIsCheckingLib32Deps(true);
+    try {
+      const { checkLib32Dependencies } = await import("@/lib/api");
+      const configToUse = { ...sshConfig, is_local: true };
+      const status = await checkLib32Dependencies(configToUse);
+      setLib32DepsStatus(status);
+      
+      if (status.all_installed) {
+        addLog("info", "All 32-bit dependencies installed ✅");
+      } else {
+        addLog("warn", "Missing 32-bit dependencies - Steam may not work properly");
+        if (!status.lib32_curl_installed) addLog("warn", "  ❌ lib32-curl not found");
+        if (!status.lib32_openssl_installed) addLog("warn", "  ❌ lib32-openssl not found");
+        if (!status.lib32_glibc_installed) addLog("warn", "  ❌ lib32-glibc not found");
+      }
+    } catch (error) {
+      addLog("error", `Failed to check dependencies: ${error}`);
+    } finally {
+      setIsCheckingLib32Deps(false);
+    }
+  };
+
+  // Browse for Steamless.exe
+  const handleBrowseSteamlessExe = async () => {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "Steamless", extensions: ["exe"] }],
+      title: "Select Steamless.exe",
+    });
+    if (selected) {
+      const path = typeof selected === "string" ? selected : selected[0];
+      setSteamlessPath(path);
+      addLog("info", `Steamless.exe path set: ${path}`);
+    }
+  };
+
+  // Launch Steamless via Wine
+  const handleLaunchSteamless = async () => {
+    if (!steamlessPath) {
+      addLog("error", "Please select Steamless.exe path first");
+      return;
+    }
+    setIsLaunchingSteamless(true);
+    try {
+      const { launchSteamlessViaWine } = await import("@/lib/api");
+      const result = await launchSteamlessViaWine(steamlessPath);
+      addLog("info", result);
+    } catch (error) {
+      addLog("error", `Failed to launch Steamless: ${error}`);
+    } finally {
+      setIsLaunchingSteamless(false);
+    }
+  };
+
+  // Check if SLSah is installed
+  const handleCheckSlsah = async () => {
+    setIsCheckingSlsah(true);
+    try {
+      const { checkSlsahInstalled } = await import("@/lib/api");
+      const installed = await checkSlsahInstalled();
+      setSlsahInstalled(installed);
+      addLog("info", installed ? "SLSah is installed ✅" : "SLSah is not installed");
+    } catch (error) {
+      addLog("error", `Failed to check SLSah: ${error}`);
+    } finally {
+      setIsCheckingSlsah(false);
+    }
+  };
+
+  // Install SLSah
+  const handleInstallSlsah = async () => {
+    setIsInstallingSlsah(true);
+    try {
+      const { installSlsah } = await import("@/lib/api");
+      const result = await installSlsah();
+      addLog("info", result);
+      setSlsahInstalled(true);
+    } catch (error) {
+      addLog("error", `Failed to install SLSah: ${error}`);
+    } finally {
+      setIsInstallingSlsah(false);
+    }
+  };
+
+  // Launch SLSah
+  const handleLaunchSlsah = async () => {
+    setIsLaunchingSlsah(true);
+    try {
+      const { launchSlsah } = await import("@/lib/api");
+      const result = await launchSlsah();
+      addLog("info", result);
+    } catch (error) {
+      addLog("error", `Failed to launch SLSah: ${error}`);
+    } finally {
+      setIsLaunchingSlsah(false);
     }
   };
 
@@ -318,6 +462,79 @@ export function SettingsPanel() {
           </Button>
         </CardContent>
       </Card>
+
+      {/* Local Mode: 32-bit Dependencies Warning */}
+      {connectionMode === "local" && (
+        <Card className="bg-[#1b2838] border-[#2a475e]">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-white flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-yellow-400" />
+              32-bit Library Dependencies (Local Mode)
+            </CardTitle>
+            <CardDescription>
+              Steam requires these 32-bit libraries to function properly on your system.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Status display */}
+            {lib32DepsStatus && (
+              <div className="bg-[#171a21] border border-[#0a0a0a] p-3 space-y-2 text-sm">
+                <div className="grid grid-cols-1 gap-2">
+                  <div className={lib32DepsStatus.lib32_curl_installed ? "text-green-400" : "text-red-400"}>
+                    {lib32DepsStatus.lib32_curl_installed ? "✅" : "❌"} lib32-curl
+                  </div>
+                  <div className={lib32DepsStatus.lib32_openssl_installed ? "text-green-400" : "text-red-400"}>
+                    {lib32DepsStatus.lib32_openssl_installed ? "✅" : "❌"} lib32-openssl
+                  </div>
+                  <div className={lib32DepsStatus.lib32_glibc_installed ? "text-green-400" : "text-red-400"}>
+                    {lib32DepsStatus.lib32_glibc_installed ? "✅" : "❌"} lib32-glibc
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Warning if not all installed */}
+            {lib32DepsStatus && !lib32DepsStatus.all_installed && (
+              <div className="bg-yellow-900/20 border border-yellow-600/50 p-3">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                  <div className="text-sm">
+                    <p className="font-medium text-yellow-400 mb-2">Missing Dependencies</p>
+                    <p className="text-gray-300 mb-2">Install the missing libraries:</p>
+                    <pre className="text-muted-foreground bg-[#171a21] p-2 rounded text-xs">
+                      sudo pacman -S lib32-curl lib32-openssl lib32-glibc
+                    </pre>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Success message */}
+            {lib32DepsStatus && lib32DepsStatus.all_installed && (
+              <div className="bg-green-900/20 border border-green-600/50 p-3">
+                <div className="flex items-center gap-2 text-green-400">
+                  <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
+                  <span className="text-sm">All required 32-bit libraries are installed.</span>
+                </div>
+              </div>
+            )}
+            
+            <Button
+              onClick={handleCheckLib32Dependencies}
+              disabled={isCheckingLib32Deps}
+              variant="outline"
+              className="w-full border-[#2a475e] text-white hover:bg-[#2a475e]/50"
+            >
+              {isCheckingLib32Deps ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-2" />
+              )}
+              Check Dependencies
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Steam Deck Connection (Remote Only) */}
       {connectionMode !== "local" && (
@@ -443,6 +660,46 @@ export function SettingsPanel() {
           <CardDescription>Log in via Discord at https://manifest.morrenus.xyz and create an API key in account settings.<br />Free key: 25 manifests per day, must be regenerated every 24 hours.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Use Gist Key Checkbox */}
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="useGistKey"
+              checked={useGistKey}
+              onCheckedChange={async (checked) => {
+                setUseGistKey(!!checked);
+                if (checked) {
+                  setIsFetchingGistKey(true);
+                  try {
+                    const response = await fetch(
+                      "https://gist.githubusercontent.com/ppogorze/592adb16ebf2cc27ce976bacf1928023/raw/5cef834c57c8857d214859eab606aefe7210ea86/gistfile1.txt"
+                    );
+                    if (response.ok) {
+                      const key = await response.text();
+                      const trimmedKey = key.trim();
+                      setLocalApiKey(trimmedKey);
+                      // Auto-save
+                      setSettings({ apiKey: trimmedKey });
+                      await saveApiKey(trimmedKey);
+                      addLog("info", "API key fetched from Gist and saved");
+                    } else {
+                      addLog("error", "Failed to fetch API key from Gist");
+                      setUseGistKey(false);
+                    }
+                  } catch (error) {
+                    addLog("error", `Failed to fetch Gist key: ${error}`);
+                    setUseGistKey(false);
+                  } finally {
+                    setIsFetchingGistKey(false);
+                  }
+                }
+              }}
+            />
+            <Label htmlFor="useGistKey" className="text-sm cursor-pointer flex items-center gap-2">
+              Use shared key from Gist (auto-fetch)
+              {isFetchingGistKey && <Loader2 className="w-3 h-3 animate-spin" />}
+            </Label>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="apiKey">API Key</Label>
             <div className="flex gap-2">
@@ -450,9 +707,14 @@ export function SettingsPanel() {
                 <Input
                   id="apiKey"
                   type={showApiKey ? "text" : "password"}
-                  placeholder="Enter key (valid 24h)"
+                  placeholder={useGistKey ? "Using key from Gist" : "Enter key (valid 24h)"}
                   value={localApiKey}
-                  onChange={(e) => setLocalApiKey(e.target.value)}
+                  onChange={(e) => {
+                    setLocalApiKey(e.target.value);
+                    if (useGistKey) setUseGistKey(false); // Disable gist mode if user types
+                  }}
+                  disabled={isFetchingGistKey || useGistKey}
+                  className={useGistKey ? "bg-[#1b2838] text-gray-400" : ""}
                 />
                 <Button
                   variant="ghost"
@@ -463,7 +725,7 @@ export function SettingsPanel() {
                   {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </Button>
               </div>
-              <Button onClick={handleSaveApiKey} disabled={isSaving} className="btn-steam">
+              <Button onClick={handleSaveApiKey} disabled={isSaving || isFetchingGistKey} className="btn-steam">
                 <Save className="w-4 h-4 mr-2" />
                 Save
               </Button>
@@ -711,9 +973,7 @@ export function SettingsPanel() {
                 <div className={verifyStatus.config_exists ? "text-green-400" : "text-red-400"}>
                   {verifyStatus.config_exists ? "✅" : "❌"} config.yaml
                 </div>
-                <div className={verifyStatus.config_play_not_owned ? "text-green-400" : "text-red-400"}>
-                  {verifyStatus.config_play_not_owned ? "✅" : "❌"} PlayNotOwnedGames
-                </div>
+
                 {/* SafeMode, steam-jupiter, Desktop entry are SteamOS-specific */}
                 {connectionMode === "remote" ? (
                   <>
@@ -958,6 +1218,152 @@ BootStrapperForceSelfUpdate=disable`}
               <span className="ml-2">Check Status</span>
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      <Separator />
+
+      {/* Tools Section */}
+      <Card className="bg-[#1b2838] border-[#2a475e]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-white flex items-center gap-2">
+            <Wrench className="w-5 h-5 text-[#67c1f5]" />
+            Tools
+          </CardTitle>
+          <CardDescription>
+            Additional tools for game management and configuration
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Steamless */}
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-purple-400" />
+              <span className="font-medium text-white">Steamless DRM Remover</span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Remove Steam DRM from game executables. Requires Wine/Proton on Linux.
+            </p>
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Select Steamless.exe path..."
+                value={steamlessPath}
+                readOnly
+                className="bg-[#2a475e] border-[#0a0a0a] flex-1"
+              />
+              <Button
+                onClick={handleBrowseSteamlessExe}
+                variant="outline"
+                className="border-[#0a0a0a]"
+              >
+                <FolderOpen className="w-4 h-4 mr-2" />
+                Browse
+              </Button>
+            </div>
+            <Button
+              onClick={handleLaunchSteamless}
+              disabled={!steamlessPath || isLaunchingSteamless}
+              className="btn-steam"
+            >
+              {isLaunchingSteamless ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <ExternalLink className="w-4 h-4 mr-2" />
+              )}
+              Launch Steamless (via Wine)
+            </Button>
+            <div className="text-xs text-muted-foreground">
+              <a
+                href="https://github.com/atom0s/Steamless/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#67c1f5] hover:underline flex items-center gap-1"
+              >
+                <Download className="w-3 h-3" />
+                Download Steamless from GitHub
+              </a>
+            </div>
+          </div>
+
+          <Separator className="bg-[#2a475e]" />
+
+          {/* SLSah */}
+          {connectionMode === "local" && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-yellow-400" />
+                <span className="font-medium text-white">SLSah - Achievement Helper</span>
+                {slsahInstalled === true && (
+                  <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">Installed</span>
+                )}
+                {slsahInstalled === false && (
+                  <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded">Not Installed</span>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground">
+                SLSsteam Achievement Helper - Generate achievement schemas and manage SLSsteam config.
+              </p>
+              <div className="flex items-center gap-2">
+                {slsahInstalled ? (
+                  <Button
+                    onClick={handleLaunchSlsah}
+                    disabled={isLaunchingSlsah}
+                    className="btn-steam"
+                  >
+                    {isLaunchingSlsah ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Terminal className="w-4 h-4 mr-2" />
+                    )}
+                    Launch SLSah
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleInstallSlsah}
+                    disabled={isInstallingSlsah}
+                    className="btn-steam"
+                  >
+                    {isInstallingSlsah ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4 mr-2" />
+                    )}
+                    Install SLSah
+                  </Button>
+                )}
+                <Button
+                  onClick={handleCheckSlsah}
+                  disabled={isCheckingSlsah}
+                  variant="outline"
+                  className="border-[#0a0a0a]"
+                >
+                  {isCheckingSlsah ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                  <span className="ml-2">Check</span>
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                <a
+                  href="https://github.com/niwia/SLSah"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#67c1f5] hover:underline flex items-center gap-1"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                  SLSah on GitHub
+                </a>
+              </div>
+            </div>
+          )}
+
+          {connectionMode === "remote" && (
+            <div className="text-sm text-muted-foreground bg-[#2a475e]/50 p-3 rounded">
+              ℹ️ SLSah is only available in Local mode (runs on Steam Deck/Linux device).
+            </div>
+          )}
         </CardContent>
       </Card>
 

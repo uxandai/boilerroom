@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useState } from "react";
+import { useEffect, useCallback, useState, useRef } from "react";
 import { useAppStore } from "@/store/useAppStore";
 import { checkDeckStatus, testSshConnection } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -16,14 +16,7 @@ export function DeckStatus() {
 
   const [isReconnecting, setIsReconnecting] = useState(false);
 
-  // Initial check on mount
-  useEffect(() => {
-    if (connectionMode === "remote" && sshConfig.ip) {
-      handleReconnect();
-    }
-  }, [connectionMode]); // Trigger when mode changes
-
-  // Reconnect function
+  // Reconnect function - defined first so ref can use it
   const handleReconnect = useCallback(async () => {
     if (connectionMode === "local") return;
     
@@ -65,6 +58,17 @@ export function DeckStatus() {
     }
   }, [sshConfig, setConnectionStatus, addLog, connectionMode]);
 
+  // Use ref to keep handleReconnect stable for useEffect
+  const handleReconnectRef = useRef(handleReconnect);
+  handleReconnectRef.current = handleReconnect;
+
+  // Initial check on mount and mode changes
+  useEffect(() => {
+    if (connectionMode === "remote" && sshConfig.ip) {
+      handleReconnectRef.current();
+    }
+  }, [connectionMode, sshConfig.ip]);
+
   return (
     <div className="flex items-center gap-3">
       {/* Mode Toggle */}
@@ -73,6 +77,7 @@ export function DeckStatus() {
           onClick={() => {
             addLog("info", "Switched to LOCAL mode");
             setConnectionMode("local");
+            // Note: setConnectionMode automatically triggers library refresh
           }}
           className={`px-3 py-1 text-xs rounded-md transition-colors ${
             connectionMode === "local"
@@ -86,6 +91,7 @@ export function DeckStatus() {
           onClick={() => {
             addLog("info", "Switched to REMOTE mode");
             setConnectionMode("remote");
+            // Note: setConnectionMode automatically triggers library refresh
           }}
           className={`px-3 py-1 text-xs rounded-md transition-colors ${
             connectionMode === "remote"

@@ -5,6 +5,7 @@ import { LogsPanel } from "@/components/LogsPanel";
 import { LibraryPanel } from "@/components/LibraryPanel";
 import { InstallProgress } from "@/components/InstallProgress";
 import { DeckStatus } from "@/components/DeckStatus";
+import { ApiStatus } from "@/components/ApiStatus";
 import { ModeSelectionScreen } from "@/components/ModeSelectionScreen";
 import { useAppStore } from "@/store/useAppStore";
 import { getApiKey, loadConnectionMode } from "@/lib/api";
@@ -94,10 +95,13 @@ function App() {
     loadSettings();
   }, [setSettings, setSshConfig, setConnectionMode]);
 
-  // Listen for install progress
+  // Listen for install progress events
   useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+    let isMounted = true;
+
     import("@tauri-apps/api/event").then(({ listen }) => {
-      const unlisten = listen("install-progress", (event: any) => {
+      listen("install-progress", (event: any) => {
         const payload = event.payload;
         const currentProgress = useAppStore.getState().installProgress;
         useAppStore.getState().setInstallProgress({
@@ -118,12 +122,20 @@ function App() {
           message: payload.message,
           error: payload.state === "error" ? payload.message : undefined,
         });
+      }).then(fn => {
+        if (isMounted) {
+          unlistenFn = fn;
+        } else {
+          // Component unmounted before listener was set up - clean up immediately
+          fn();
+        }
       });
-
-      return () => {
-        unlisten.then(f => f());
-      };
     });
+
+    return () => {
+      isMounted = false;
+      unlistenFn?.();
+    };
   }, []);
 
   // Show loading state while checking mode
@@ -154,7 +166,8 @@ function App() {
           <div className="flex items-center gap-3 pointer-events-auto">
             <img src="/logo.png" alt="TonTonDeck" className="h-12 w-auto mix-blend-screen" />
           </div>
-          <div className="pointer-events-auto">
+          <div className="flex items-center gap-3 pointer-events-auto">
+            <ApiStatus />
             <DeckStatus />
           </div>
         </div>

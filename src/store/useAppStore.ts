@@ -140,7 +140,7 @@ export const useAppStore = create<AppState>((set) => ({
   // Actions
   setSshConfig: (config) => set((state) => ({ sshConfig: { ...state.sshConfig, ...config } })),
   setConnectionStatus: (status) => set({ connectionStatus: status }),
-  setConnectionMode: (mode) => set({ connectionMode: mode }),
+  setConnectionMode: (mode) => set({ connectionMode: mode, libraryNeedsRefresh: true }),
   toggleConnectionCheck: () => set((state) => ({ connectionCheckPaused: !state.connectionCheckPaused })),
 
   setSearchQuery: (query) => set({ searchQuery: query }),

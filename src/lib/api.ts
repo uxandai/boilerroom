@@ -429,6 +429,18 @@ export async function checkLibcurl32Status(config: SshConfig): Promise<Libcurl32
   return invoke<Libcurl32Status>("check_libcurl32_status", { config });
 }
 
+// 32-bit library dependencies status (required for Steam)
+export interface Lib32DependenciesStatus {
+  lib32_curl_installed: boolean;
+  lib32_openssl_installed: boolean;
+  lib32_glibc_installed: boolean;
+  all_installed: boolean;
+}
+
+export async function checkLib32Dependencies(config: SshConfig): Promise<Lib32DependenciesStatus> {
+  return invoke<Lib32DependenciesStatus>("check_lib32_dependencies", { config });
+}
+
 // Depot keys only install (no download) - configures Steam to recognize game
 export interface DepotKeyInfo {
   depot_id: string;
@@ -453,4 +465,51 @@ export async function installDepotKeysOnly(
     targetLibrary,
     triggerSteamInstall
   });
+}
+
+// ============================================================================
+// TOOLS: Steamless & SLSah
+// ============================================================================
+
+// Launch Steamless.exe via Wine/Proton (GUI version)
+export async function launchSteamlessViaWine(steamlessExePath: string): Promise<string> {
+  return invoke<string>("launch_steamless_via_wine", { steamlessExePath });
+}
+
+// Check if SLSah is installed
+export async function checkSlsahInstalled(): Promise<boolean> {
+  return invoke<boolean>("check_slsah_installed");
+}
+
+// Install SLSah (SLSsteam Achievement Helper)
+export async function installSlsah(): Promise<string> {
+  return invoke<string>("install_slsah");
+}
+
+// Launch SLSah in a terminal
+export async function launchSlsah(): Promise<string> {
+  return invoke<string>("launch_slsah");
+}
+
+// ============================================================================
+// API STATUS
+// ============================================================================
+
+export interface MorrenusUserStats {
+  user_id: string;
+  username: string;
+  api_key_usage_count: number;
+  daily_usage: number;
+  daily_limit: number;
+  can_make_requests: boolean;
+}
+
+export interface MorrenusApiStatus {
+  health_ok: boolean;
+  user_stats: MorrenusUserStats | null;
+  error: string | null;
+}
+
+export async function checkMorrenusApiStatus(apiKey: string): Promise<MorrenusApiStatus> {
+  return invoke<MorrenusApiStatus>("check_morrenus_api_status", { apiKey });
 }

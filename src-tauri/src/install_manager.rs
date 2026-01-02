@@ -215,7 +215,7 @@ impl InstallManager {
         keys_file: PathBuf,
         depot_keys: Vec<(String, String)>, // (depot_id, key) pairs for config.vdf
         depot_downloader_path: String,
-        steamless_path: String, 
+        _steamless_path: String, 
         ssh_config: SshConfig,
         target_directory: String, 
     ) -> Result<(), String> {
@@ -379,44 +379,8 @@ impl InstallManager {
             // For local installs: download complete = 100%, for remote: 50% (rsync will be 50-100%)
             m.update_download_percent(if is_local { 100.0 } else { 50.0 });
 
-            // ========================================
-            // PHASE 2: STEAMLESS (largest .exe only)
-            // Uses Wine/Proton with .NET 4.8 (ported from ACCELA)
-            // ========================================
-            if !steamless_path.is_empty() {
-                use crate::steamless;
-                
-                let steamless_cli = std::path::PathBuf::from(&steamless_path);
-                let game_dir = download_dir_clone.clone();
-                let m_clone = m.clone();
-                
-                m.update_status("steamless", "Initializing Steamless...");
-                
-                match steamless::process_game_with_steamless(
-                    &game_dir,
-                    &steamless_cli,
-                    |msg| {
-                        eprintln!("[Steamless] {}", msg);
-                        m_clone.update_status("steamless", msg);
-                    }
-                ) {
-                    Ok(true) => {
-                        m.update_status("steamless", "Steam DRM successfully removed!");
-                        eprintln!("[Steamless] DRM removed successfully");
-                    }
-                    Ok(false) => {
-                        m.update_status("steamless", "No DRM detected or game is clean");
-                        eprintln!("[Steamless] No DRM found");
-                    }
-                    Err(e) => {
-                        m.update_status("steamless", &format!("Steamless error: {}", e));
-                        eprintln!("[Steamless] Error: {}", e);
-                        // Don't fail the entire install, continue anyway
-                    }
-                }
-            } else {
-                eprintln!("[Steamless] Skipping - not configured");
-            }
+            // NOTE: Steamless phase removed - users can run it manually from Settings if needed
+            // This avoids the complexity of Wine/.NET installation during game downloads
 
             // ========================================
             // PHASE 3: COUNT FILES (for progress display)

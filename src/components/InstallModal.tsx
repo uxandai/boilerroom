@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, Download, HardDrive, RefreshCcw, Key } from "lucide-react";
 import { getSteamLibraries, startPipelinedInstall, downloadBundle, extractManifestZip, checkGameInstalled, installDepotKeysOnly, type DepotInfo, type InstalledDepot, type DepotKeyInfo } from "@/lib/api";
+import { formatSize, sortSteamLibraries } from "@/lib/utils";
 import type { SearchResult } from "@/store/useAppStore";
 
 interface Depot {
@@ -72,7 +73,7 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
         addLog("warn", "[DEBUG] Neither LOCAL mode nor SSH configured!");
       }
     }
-  }, [isOpen, sshConfig, connectionMode]);
+  }, [isOpen, sshConfig.ip, sshConfig.password, connectionMode]);
 
   // Download and parse manifest when modal opens
   useEffect(() => {
@@ -159,17 +160,10 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
     setIsLoadingLibraries(true);
     try {
       const libs = await getSteamLibraries(sshConfig);
-      // Sort: internal first (paths containing .steam), then SD cards
-      const sorted = libs.sort((a, b) => {
-        const aIsInternal = a.includes('.steam') || (!a.includes('mmcblk') && !a.includes('media'));
-        const bIsInternal = b.includes('.steam') || (!b.includes('mmcblk') && !b.includes('media'));
-        if (aIsInternal && !bIsInternal) return -1;
-        if (!aIsInternal && bIsInternal) return 1;
-        return 0;
-      });
+      const sorted = sortSteamLibraries(libs);
       setLibraries(sorted);
       if (sorted.length > 0) {
-        setSelectedLibrary(sorted[0]); // Default to internal (first after sort)
+        setSelectedLibrary(sorted[0]);
       }
     } catch (error) {
       addLog("error", `Failed to load Steam libraries: ${error}`);
@@ -225,7 +219,6 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
       setSelectedLibrary("/tmp/Games");
     } finally {
       setIsLoadingLibraries(false);
-      addLog("info", `[DEBUG] Libraries loaded: ${libraries.length}, selectedLibrary=${selectedLibrary}`);
     }
   };
 
@@ -247,13 +240,6 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
   const totalSelectedSize = depots
     .filter(d => d.selected)
     .reduce((acc, d) => acc + (d.size || 0), 0);
-
-  const formatSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  };
 
   const handleInstall = async () => {
     if (!game || selectedCount === 0 || !selectedLibrary) return;

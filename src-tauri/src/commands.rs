@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::Emitter;
 
 // Global state for copy_game_to_remote cancellation
@@ -119,6 +119,112 @@ pub async fn test_ssh(config: SshConfig) -> Result<String, String> {
     channel.wait_close().ok();
 
     Ok(output.trim().to_string())
+}
+
+// ============================================================================
+// API STATUS COMMANDS
+// ============================================================================
+
+/// API status response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MorrenusApiStatus {
+    pub health_ok: bool,
+    pub user_stats: Option<MorrenusUserStats>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MorrenusUserStats {
+    pub user_id: String,
+    pub username: String,
+    pub api_key_usage_count: i64,
+    pub daily_usage: i64,
+    pub daily_limit: i64,
+    pub can_make_requests: bool,
+}
+
+/// Check Morrenus API status and get user stats
+#[tauri::command]
+pub async fn check_morrenus_api_status(
+    api_key: String,
+) -> Result<MorrenusApiStatus, String> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+    // Check API health
+    let health_response = client
+        .get("https://manifest.morrenus.xyz/api/v1/health")
+        .send()
+        .await;
+
+    let health_ok = match health_response {
+        Ok(resp) => resp.status().is_success(),
+        Err(_) => false,
+    };
+
+    if !health_ok {
+        return Ok(MorrenusApiStatus {
+            health_ok: false,
+            user_stats: None,
+            error: Some("API server unavailable".to_string()),
+        });
+    }
+
+    // If no API key, return health only
+    if api_key.is_empty() {
+        return Ok(MorrenusApiStatus {
+            health_ok: true,
+            user_stats: None,
+            error: Some("No API key configured".to_string()),
+        });
+    }
+
+    // Get user stats
+    let stats_response = client
+        .get(&format!(
+            "https://manifest.morrenus.xyz/api/v1/user/stats?api_key={}",
+            api_key
+        ))
+        .send()
+        .await;
+
+    match stats_response {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                match resp.json::<MorrenusUserStats>().await {
+                    Ok(stats) => Ok(MorrenusApiStatus {
+                        health_ok: true,
+                        user_stats: Some(stats),
+                        error: None,
+                    }),
+                    Err(e) => Ok(MorrenusApiStatus {
+                        health_ok: true,
+                        user_stats: None,
+                        error: Some(format!("Failed to parse stats: {}", e)),
+                    }),
+                }
+            } else if resp.status().as_u16() == 401 {
+                Ok(MorrenusApiStatus {
+                    health_ok: true,
+                    user_stats: None,
+                    error: Some("Invalid API key".to_string()),
+                })
+            } else {
+                Ok(MorrenusApiStatus {
+                    health_ok: true,
+                    user_stats: None,
+                    error: Some(format!("API error: {}", resp.status())),
+                })
+            }
+        }
+        Err(e) => Ok(MorrenusApiStatus {
+            health_ok: true,
+            user_stats: None,
+            error: Some(format!("Request failed: {}", e)),
+        }),
+    }
 }
 
 // ============================================================================
@@ -3816,6 +3922,15 @@ pub async fn copy_game_to_remote(
             let mut current_file_bytes: u64 = 0;
             let mut current_speed = String::new();
 
+            // Throttling: only emit progress updates every 10 seconds to avoid UI overhead
+            let emit_interval = Duration::from_secs(10);
+            let mut last_emit_time = Instant::now() - emit_interval; // Allow immediate first emit
+
+            // Helper to check if we should emit a progress update
+            let should_emit = |last_time: Instant| -> bool {
+                last_time.elapsed() >= emit_interval
+            };
+
             // Regex for parsing progress line: "  1,234,567 100%   12.34MB/s"
             // Captures: bytes (with commas), percentage, speed
             // Note: rsync uses lowercase kB/s, MB/s, GB/s
@@ -3865,21 +3980,25 @@ pub async fn copy_game_to_remote(
                                     files_done, total, current_file_name
                                 );
 
-                                let _ = app_clone.emit(
-                                    "install-progress",
-                                    serde_json::json!({
-                                        "state": "transferring",
-                                        "message": format!("Copying: {}/{}", files_done, total),
-                                        "current_file": display_file,
-                                        "current_file_percent": 0,
-                                        "download_percent": percent,
-                                        "transfer_speed": current_speed,
-                                        "files_transferred": files_done,
-                                        "files_total": total,
-                                        "bytes_transferred": bytes_transferred,
-                                        "bytes_total": total_bytes_clone
-                                    }),
-                                );
+                                // Throttle emissions to every 10 seconds
+                                if should_emit(last_emit_time) {
+                                    last_emit_time = Instant::now();
+                                    let _ = app_clone.emit(
+                                        "install-progress",
+                                        serde_json::json!({
+                                            "state": "transferring",
+                                            "message": format!("Copying: {}/{}", files_done, total),
+                                            "current_file": display_file,
+                                            "current_file_percent": 0,
+                                            "download_percent": percent,
+                                            "transfer_speed": current_speed,
+                                            "files_transferred": files_done,
+                                            "files_total": total,
+                                            "bytes_transferred": bytes_transferred,
+                                            "bytes_total": total_bytes_clone
+                                        }),
+                                    );
+                                }
                             }
                         }
                         // Parse progress percentage line: "  1,234,567  50%   12.34MB/s"
@@ -3958,22 +4077,26 @@ pub async fn copy_game_to_remote(
                                         (base_percent + file_contribution, String::new())
                                     };
 
-                                    let _ = app_clone.emit("install-progress", serde_json::json!({
-                                        "state": "transferring",
-                                        "message": if byte_progress_str.is_empty() {
-                                            format!("Copying: {}/{} ({}%)", files_done, total, current_file_percent)
-                                        } else {
-                                            format!("Copying: {} | {}", byte_progress_str, current_speed)
-                                        },
-                                        "current_file": format!("{} {}%", display_file, current_file_percent),
-                                        "current_file_percent": current_file_percent,
-                                        "download_percent": overall_percent,
-                                        "transfer_speed": current_speed,
-                                        "files_transferred": files_done,
-                                        "files_total": total,
-                                        "bytes_transferred": bytes_transferred,
-                                        "bytes_total": total_bytes_clone
-                                    }));
+                                    // Throttle emissions to every 10 seconds
+                                    if should_emit(last_emit_time) {
+                                        last_emit_time = Instant::now();
+                                        let _ = app_clone.emit("install-progress", serde_json::json!({
+                                            "state": "transferring",
+                                            "message": if byte_progress_str.is_empty() {
+                                                format!("Copying: {}/{} ({}%)", files_done, total, current_file_percent)
+                                            } else {
+                                                format!("Copying: {} | {}", byte_progress_str, current_speed)
+                                            },
+                                            "current_file": format!("{} {}%", display_file, current_file_percent),
+                                            "current_file_percent": current_file_percent,
+                                            "download_percent": overall_percent,
+                                            "transfer_speed": current_speed,
+                                            "files_transferred": files_done,
+                                            "files_total": total,
+                                            "bytes_transferred": bytes_transferred,
+                                            "bytes_total": total_bytes_clone
+                                        }));
+                                    }
                                 }
                             }
                         }
@@ -3990,7 +4113,9 @@ pub async fn copy_game_to_remote(
                                 }
                             }
 
-                            if files_done % 50 == 0 {
+                            // Throttle emissions to every 10 seconds (replaces files_done % 50 check)
+                            if should_emit(last_emit_time) {
+                                last_emit_time = Instant::now();
                                 let total = if file_count_clone > 0 {
                                     file_count_clone
                                 } else {
@@ -4800,6 +4925,97 @@ echo "SYMLINK_CORRECT=$SYMLINK_CORRECT"
     })
 }
 
+/// Status of 32-bit library dependencies required by Steam
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Lib32DependenciesStatus {
+    pub lib32_curl_installed: bool,
+    pub lib32_openssl_installed: bool,
+    pub lib32_glibc_installed: bool,
+    pub all_installed: bool,
+}
+
+/// Check if required 32-bit libraries are installed (lib32-curl, lib32-openssl, lib32-glibc)
+#[tauri::command]
+pub async fn check_lib32_dependencies(config: SshConfig) -> Result<Lib32DependenciesStatus, String> {
+    // Check if local mode
+    if config.is_local || config.ip.is_empty() {
+        // Local mode - check if 32-bit libraries exist
+        let lib32_curl_installed = PathBuf::from("/usr/lib32/libcurl.so.4").exists();
+        
+        // lib32-openssl can be libssl.so or libssl.so.3
+        let lib32_openssl_installed = PathBuf::from("/usr/lib32/libssl.so").exists()
+            || PathBuf::from("/usr/lib32/libssl.so.3").exists();
+        
+        let lib32_glibc_installed = PathBuf::from("/usr/lib32/libc.so.6").exists();
+        
+        let all_installed = lib32_curl_installed && lib32_openssl_installed && lib32_glibc_installed;
+        
+        return Ok(Lib32DependenciesStatus {
+            lib32_curl_installed,
+            lib32_openssl_installed,
+            lib32_glibc_installed,
+            all_installed,
+        });
+    }
+
+    // Remote mode via SSH
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP address: {}", config.ip))?;
+    let addr = SocketAddr::new(ip, config.port);
+
+    let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    let mut sess =
+        ssh2::Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
+
+    sess.set_tcp_stream(tcp);
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
+
+    sess.userauth_password(&config.username, &config.password)
+        .map_err(|e| format!("SSH auth failed: {}", e))?;
+
+    // Check 32-bit library status on remote
+    let cmd = r#"
+LIB32_CURL="false"
+LIB32_OPENSSL="false"
+LIB32_GLIBC="false"
+
+if [ -f "/usr/lib32/libcurl.so.4" ]; then
+    LIB32_CURL="true"
+fi
+
+if [ -f "/usr/lib32/libssl.so" ] || [ -f "/usr/lib32/libssl.so.3" ]; then
+    LIB32_OPENSSL="true"
+fi
+
+if [ -f "/usr/lib32/libc.so.6" ]; then
+    LIB32_GLIBC="true"
+fi
+
+echo "LIB32_CURL=$LIB32_CURL"
+echo "LIB32_OPENSSL=$LIB32_OPENSSL"
+echo "LIB32_GLIBC=$LIB32_GLIBC"
+"#;
+
+    let output = ssh_exec(&sess, cmd)?;
+
+    let lib32_curl_installed = output.contains("LIB32_CURL=true");
+    let lib32_openssl_installed = output.contains("LIB32_OPENSSL=true");
+    let lib32_glibc_installed = output.contains("LIB32_GLIBC=true");
+    let all_installed = lib32_curl_installed && lib32_openssl_installed && lib32_glibc_installed;
+
+    Ok(Lib32DependenciesStatus {
+        lib32_curl_installed,
+        lib32_openssl_installed,
+        lib32_glibc_installed,
+        all_installed,
+    })
+}
+
 // ============================================================================
 // DEPOT KEYS ONLY INSTALL COMMAND
 // ============================================================================
@@ -5128,4 +5344,173 @@ fn build_acf_state_flags_6(app_id: &str, game_name: &str) -> String {
         game_name = game_name,
         install_dir = install_dir
     )
+}
+
+// ============================================================================
+// TOOLS SECTION: STEAMLESS & SLSah
+// ============================================================================
+
+/// Launch Steamless.exe via Wine/Proton (GUI version, not CLI)
+/// This allows users to manually select and patch game executables
+#[tauri::command]
+pub async fn launch_steamless_via_wine(steamless_exe_path: String) -> Result<String, String> {
+
+    // Validate the path exists
+    let path = PathBuf::from(&steamless_exe_path);
+    if !path.exists() {
+        return Err(format!("Steamless.exe not found at: {}", steamless_exe_path));
+    }
+    
+    // On macOS, Steamless doesn't work (needs Wine/Proton)
+    #[cfg(target_os = "macos")]
+    {
+        return Err("Steamless is not supported on macOS. Please run on Linux/SteamOS or Windows.".to_string());
+    }
+    
+    // On Windows, run directly
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        Command::new(&steamless_exe_path)
+            .spawn()
+            .map_err(|e| format!("Failed to launch Steamless: {}", e))?;
+        return Ok("Steamless launched".to_string());
+    }
+    
+    // On Linux/SteamOS, find Wine/Proton and launch
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        use std::process::Command;
+        // Find Proton or Wine
+        let home = dirs::home_dir().ok_or("Could not find home directory")?;
+        
+        // Common Proton paths
+        let proton_paths = vec![
+            home.join(".local/share/Steam/steamapps/common/Proton - Experimental/files/bin/wine64"),
+            home.join(".local/share/Steam/steamapps/common/Proton - Experimental/files/bin/wine"),
+            home.join(".local/share/Steam/steamapps/common/Proton 9.0/files/bin/wine64"),
+            home.join(".local/share/Steam/steamapps/common/Proton 9.0/files/bin/wine"),
+            home.join(".local/share/Steam/steamapps/common/Proton 8.0/files/bin/wine64"),
+            home.join(".steam/steam/steamapps/common/Proton - Experimental/files/bin/wine64"),
+            home.join(".steam/steam/steamapps/common/Proton - Experimental/files/bin/wine"),
+            PathBuf::from("/usr/bin/wine64"),
+            PathBuf::from("/usr/bin/wine"),
+        ];
+        
+        let wine_path = proton_paths.iter()
+            .find(|p| p.exists())
+            .ok_or("No Wine or Proton installation found. Please install Proton via Steam or install Wine.")?;
+        
+        eprintln!("[Steamless] Using Wine: {:?}", wine_path);
+        
+        // Set up Wine prefix
+        let prefix = home.join(".local/share/tontondeck/steamless/pfx");
+        std::fs::create_dir_all(&prefix).map_err(|e| format!("Failed to create Wine prefix: {}", e))?;
+        
+        // Set environment for Proton
+        let mut cmd = Command::new(wine_path);
+        cmd.arg(&steamless_exe_path);
+        cmd.env("WINEPREFIX", prefix.to_string_lossy().to_string());
+        cmd.env("WINEDEBUG", "-all");
+        
+        // For Proton, set LD_LIBRARY_PATH
+        if wine_path.to_string_lossy().contains("Proton") {
+            if let Some(proton_root) = wine_path.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) {
+                let lib_path = proton_root.join("lib");
+                let lib64_path = proton_root.join("lib64");
+                let mut ld_path = String::new();
+                if lib64_path.exists() {
+                    ld_path.push_str(&lib64_path.to_string_lossy());
+                    ld_path.push(':');
+                }
+                ld_path.push_str(&lib_path.to_string_lossy());
+                cmd.env("LD_LIBRARY_PATH", ld_path);
+            }
+        }
+        
+        cmd.spawn()
+            .map_err(|e| format!("Failed to launch Steamless via Wine: {}", e))?;
+        
+        Ok(format!("Steamless launched via Wine ({:?})", wine_path.file_name().unwrap_or_default()))
+    }
+}
+
+/// Check if SLSah is installed
+#[tauri::command]
+pub async fn check_slsah_installed() -> Result<bool, String> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let slsah_path = home.join("steam-schema-generator/slsah.sh");
+    Ok(slsah_path.exists())
+}
+
+/// Install SLSah (SLSsteam Achievement Helper)
+#[tauri::command]
+pub async fn install_slsah() -> Result<String, String> {
+    // SLSah only works on Linux/SteamOS
+    #[cfg(target_os = "windows")]
+    {
+        return Err("SLSah is a Linux/SteamOS tool and is not supported on Windows.".to_string());
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        return Err("SLSah is a Linux/SteamOS tool and is not supported on macOS.".to_string());
+    }
+    
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        use std::process::Command;
+        // Run the install script via curl
+        let output = Command::new("sh")
+            .args(["-c", "curl -L https://github.com/niwia/SLSah/raw/main/install.sh | sh"])
+            .output()
+            .map_err(|e| format!("Failed to run installer: {}", e))?;
+        
+        if output.status.success() {
+            Ok("SLSah installed successfully! You can find the desktop shortcut in your applications menu.".to_string())
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Installation failed: {}", stderr))
+        }
+    }
+}
+
+/// Launch SLSah
+#[tauri::command]
+pub async fn launch_slsah() -> Result<String, String> {
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    {
+        return Err("SLSah is only available on Linux/SteamOS.".to_string());
+    }
+    
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        use std::process::Command;
+        let home = dirs::home_dir().ok_or("Could not find home directory")?;
+        let slsah_path = home.join("steam-schema-generator/slsah.sh");
+        
+        if !slsah_path.exists() {
+            return Err("SLSah is not installed. Please install it first.".to_string());
+        }
+        
+        // Launch in a new terminal
+        let terminals = vec![
+            ("konsole", vec!["-e", slsah_path.to_str().unwrap()]),
+            ("gnome-terminal", vec!["--", slsah_path.to_str().unwrap()]),
+            ("xfce4-terminal", vec!["-e", slsah_path.to_str().unwrap()]),
+            ("xterm", vec!["-e", slsah_path.to_str().unwrap()]),
+        ];
+        
+        for (terminal, args) in terminals {
+            if Command::new("which").arg(terminal).output().map(|o| o.status.success()).unwrap_or(false) {
+                Command::new(terminal)
+                    .args(&args)
+                    .spawn()
+                    .map_err(|e| format!("Failed to launch SLSah: {}", e))?;
+                return Ok(format!("SLSah launched in {}", terminal));
+            }
+        }
+        
+        Err("No supported terminal emulator found (tried konsole, gnome-terminal, xfce4-terminal, xterm)".to_string())
+    }
 }

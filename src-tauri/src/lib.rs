@@ -123,8 +123,16 @@ pub fn run() {
             fix_libcurl32,
             check_steam_updates_status,
             check_libcurl32_status,
+            check_lib32_dependencies,
             // Depot keys only install command
             install_depot_keys_only,
+            // Tools: Steamless & SLSah
+            launch_steamless_via_wine,
+            check_slsah_installed,
+            install_slsah,
+            launch_slsah,
+            // API status
+            check_morrenus_api_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
