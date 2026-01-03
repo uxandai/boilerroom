@@ -74,6 +74,8 @@ function App() {
             steamlessPath: savedToolSettings.steamlessPath,
             slssteamPath: savedToolSettings.slssteamPath,
             steamGridDbApiKey: savedToolSettings.steamGridDbApiKey || "",
+            steamApiKey: savedToolSettings.steamApiKey || "",
+            steamUserId: savedToolSettings.steamUserId || "",
           });
         }
 
