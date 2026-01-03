@@ -57,6 +57,8 @@ export interface Settings {
   slssteamPath: string;
   slssteamVersion?: string; // Cached SLSsteam version from GitHub
   steamGridDbApiKey: string; // Optional SteamGridDB API key for game artwork
+  steamApiKey: string; // Steam Web API key for achievements
+  steamUserId: string; // Steam User ID for achievements (format: [U:1:xxxxxxxxx])
 }
 
 interface AppState {
@@ -118,6 +120,8 @@ const defaultSettings: Settings = {
   steamlessPath: "",
   slssteamPath: "",
   steamGridDbApiKey: "",
+  steamApiKey: "",
+  steamUserId: "",
 };
 
 export const useAppStore = create<AppState>((set) => ({

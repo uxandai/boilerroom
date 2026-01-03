@@ -8,6 +8,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { listInstalledGames, listInstalledGamesLocal, fetchSteamGridDbArtwork, type InstalledGame } from "@/lib/api";
 import { formatSize } from "@/lib/utils";
 import { CopyToRemoteModal } from "@/components/CopyToRemoteModal";
+import { GameCardModal } from "@/components/GameCardModal";
 
 export function LibraryPanel() {
   const { sshConfig, addLog, connectionStatus, connectionMode, setSearchQuery, settings, setActiveTab, setTriggerSearch, libraryNeedsRefresh } = useAppStore();
@@ -22,6 +23,8 @@ export function LibraryPanel() {
   });
   // State for Copy to Remote modal
   const [copyToRemoteGame, setCopyToRemoteGame] = useState<InstalledGame | null>(null);
+  // State for Game Card modal
+  const [selectedGameForCard, setSelectedGameForCard] = useState<InstalledGame | null>(null);
 
   // Refs for preventing duplicate refreshes
   const isRefreshingRef = useRef(false);
@@ -92,7 +95,7 @@ export function LibraryPanel() {
     // Process in batches for better performance
     for (let i = 0; i < gamesToFetch.length; i += BATCH_SIZE) {
       const batch = gamesToFetch.slice(i, i + BATCH_SIZE);
-      
+
       await Promise.allSettled(
         batch.map(async (game) => {
           // Skip if already fetched in this batch run
@@ -154,7 +157,7 @@ export function LibraryPanel() {
         useAppStore.setState({ libraryNeedsRefresh: false });
         return;
       }
-      
+
       useAppStore.setState({ libraryNeedsRefresh: false });
       lastRefreshTimeRef.current = now;
       isRefreshingRef.current = true;
@@ -239,7 +242,8 @@ export function LibraryPanel() {
                 .map((game) => (
                   <div
                     key={game.app_id !== "unknown" ? game.app_id : game.path}
-                    className="bg-[#171a21] border border-[#0a0a0a] p-3 flex items-center justify-between hover:bg-[#1b2838] transition-colors"
+                    className="bg-[#171a21] border border-[#0a0a0a] p-3 flex items-center justify-between hover:bg-[#1b2838] transition-colors cursor-pointer"
+                    onClick={() => setSelectedGameForCard(game)}
                   >
                     <div className="flex items-center gap-4">
                       {artworkMap.get(game.app_id) || game.header_image ? (
@@ -266,7 +270,8 @@ export function LibraryPanel() {
                         size="sm"
                         className="text-[#67c1f5] hover:text-[#8ed0f8] hover:bg-[#2a475e]"
                         title="Search for updates"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setSearchQuery(game.app_id !== "unknown" ? game.app_id : game.name);
                           setActiveTab("search");
                           setTriggerSearch(true);
@@ -281,7 +286,10 @@ export function LibraryPanel() {
                           size="sm"
                           className="text-green-400 hover:text-green-300 hover:bg-green-900/20"
                           title="Copy to Steam Deck"
-                          onClick={() => setCopyToRemoteGame(game)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCopyToRemoteGame(game);
+                          }}
                         >
                           <Upload className="w-4 h-4" />
                         </Button>
@@ -291,7 +299,8 @@ export function LibraryPanel() {
                         size="sm"
                         className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
                         title="Uninstall"
-                        onClick={async () => {
+                        onClick={async (e) => {
+                          e.stopPropagation();
                           if (!confirm(`Are you sure you want to uninstall ${game.name}?`)) return;
                           try {
                             const { uninstallGame } = await import("@/lib/api");
@@ -323,6 +332,14 @@ export function LibraryPanel() {
         isOpen={copyToRemoteGame !== null}
         onClose={() => setCopyToRemoteGame(null)}
         game={copyToRemoteGame}
+      />
+
+      {/* Game Card Modal */}
+      <GameCardModal
+        isOpen={selectedGameForCard !== null}
+        onClose={() => setSelectedGameForCard(null)}
+        game={selectedGameForCard}
+        onGameRemoved={refreshGames}
       />
     </div>
   );

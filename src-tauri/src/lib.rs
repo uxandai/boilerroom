@@ -133,6 +133,10 @@ pub fn run() {
             launch_slsah,
             // API status
             check_morrenus_api_status,
+            // SLSsteam config management
+            add_fake_app_id,
+            add_app_token,
+            generate_achievements,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

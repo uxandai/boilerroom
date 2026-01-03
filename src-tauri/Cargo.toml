@@ -1,6 +1,6 @@
 [package]
 name = "tontondeck"
-version = "1.0.0"
+version = "1.1.0"
 description = "Manager pakietów dla Steam Deck"
 authors = ["TonTonDeck Team"]
 edition = "2021"
@@ -21,7 +21,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
 tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.12", features = ["stream", "json"] }
+reqwest = { version = "0.12", features = ["stream", "json", "blocking"] }
 ssh2 = "0.9"
 chrono = "0.4"
 tempfile = "3"

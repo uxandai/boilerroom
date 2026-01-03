@@ -31,6 +31,8 @@ export interface ToolSettings {
   steamlessPath: string;
   slssteamPath: string;
   steamGridDbApiKey?: string; // Optional SteamGridDB API key
+  steamApiKey?: string; // Steam Web API key for achievements
+  steamUserId?: string; // Steam User ID for achievements
 }
 
 export async function saveToolSettings(settings: ToolSettings): Promise<void> {
@@ -110,6 +112,7 @@ export interface GameManifestData {
   game_name: string;
   install_dir: string;
   depots: DepotInfo[];
+  app_token?: string; // From addtoken() in LUA - optional
 }
 
 export async function extractManifestZip(zipPath: string): Promise<GameManifestData> {
@@ -172,7 +175,8 @@ export async function startPipelinedInstall(
   depotDownloaderPath: string,
   steamlessPath: string,
   sshConfig: SshConfig,
-  targetDirectory: string
+  targetDirectory: string,
+  appToken?: string // Optional app token from LUA addtoken()
 ): Promise<void> {
   return invoke("start_pipelined_install", {
     appId,
@@ -184,7 +188,8 @@ export async function startPipelinedInstall(
     depotDownloaderPath,
     steamlessPath,
     sshConfig,
-    targetDirectory
+    targetDirectory,
+    appToken: appToken || null
   });
 }
 
@@ -512,4 +517,31 @@ export interface MorrenusApiStatus {
 
 export async function checkMorrenusApiStatus(apiKey: string): Promise<MorrenusApiStatus> {
   return invoke<MorrenusApiStatus>("check_morrenus_api_status", { apiKey });
+}
+
+// ============================================================================
+// SLSSTEAM CONFIG MANAGEMENT
+// ============================================================================
+
+// Add FakeAppId mapping for Online-Fix (maps to 480 for Spacewar networking)
+export async function addFakeAppId(config: SshConfig, appId: string): Promise<void> {
+  return invoke<void>("add_fake_app_id", { config, appId });
+}
+
+// Add AppToken entry to SLSsteam config
+export async function addAppToken(config: SshConfig, appId: string, token: string): Promise<void> {
+  return invoke<void>("add_app_token", { config, appId, token });
+}
+
+// ============================================================================
+// ACHIEVEMENT GENERATION
+// ============================================================================
+
+// Generate achievement schema files for a game
+export async function generateAchievements(
+  appId: string,
+  steamApiKey: string,
+  steamUserId: string
+): Promise<string> {
+  return invoke<string>("generate_achievements", { appId, steamApiKey, steamUserId });
 }

@@ -325,14 +325,14 @@ export function SettingsPanel() {
     if (connectionMode !== "local") {
       return; // Only relevant for local mode
     }
-    
+
     setIsCheckingLib32Deps(true);
     try {
       const { checkLib32Dependencies } = await import("@/lib/api");
       const configToUse = { ...sshConfig, is_local: true };
       const status = await checkLib32Dependencies(configToUse);
       setLib32DepsStatus(status);
-      
+
       if (status.all_installed) {
         addLog("info", "All 32-bit dependencies installed ✅");
       } else {
@@ -492,7 +492,7 @@ export function SettingsPanel() {
                 </div>
               </div>
             )}
-            
+
             {/* Warning if not all installed */}
             {lib32DepsStatus && !lib32DepsStatus.all_installed && (
               <div className="bg-yellow-900/20 border border-yellow-600/50 p-3">
@@ -508,7 +508,7 @@ export function SettingsPanel() {
                 </div>
               </div>
             )}
-            
+
             {/* Success message */}
             {lib32DepsStatus && lib32DepsStatus.all_installed && (
               <div className="bg-green-900/20 border border-green-600/50 p-3">
@@ -518,7 +518,7 @@ export function SettingsPanel() {
                 </div>
               </div>
             )}
-            
+
             <Button
               onClick={handleCheckLib32Dependencies}
               disabled={isCheckingLib32Deps}
@@ -776,6 +776,65 @@ export function SettingsPanel() {
               </Button>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Steam Web API for Achievements */}
+      <Card className="bg-[#1b2838] border-[#2a475e]">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-white">Steam Web API (for achievements)</CardTitle>
+          <CardDescription>
+            Get API key from <a href="https://steamcommunity.com/dev/apikey" target="_blank" rel="noopener noreferrer" className="text-[#67c1f5] hover:underline">steamcommunity.com/dev/apikey</a>.
+            Used by "Generate Achievements" feature in game cards.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="steamApiKey">Steam API Key</Label>
+            <Input
+              id="steamApiKey"
+              type="password"
+              placeholder="Enter Steam Web API key"
+              value={settings.steamApiKey || ""}
+              onChange={(e) => setSettings({ steamApiKey: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="steamUserId">Steam User ID</Label>
+            <Input
+              id="steamUserId"
+              placeholder="e.g., [U:1:12345678] or 76561198012345678"
+              value={settings.steamUserId || ""}
+              onChange={(e) => setSettings({ steamUserId: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground">
+              Your Steam ID in any format. Used for generating user-specific achievement files.
+            </p>
+          </div>
+          <Button
+            onClick={async () => {
+              try {
+                const { saveToolSettings } = await import("@/lib/api");
+                await saveToolSettings({
+                  depotDownloaderPath: settings.depotDownloaderPath,
+                  steamlessPath: settings.steamlessPath,
+                  slssteamPath: settings.slssteamPath,
+                  steamGridDbApiKey: settings.steamGridDbApiKey,
+                  steamApiKey: settings.steamApiKey,
+                  steamUserId: settings.steamUserId,
+                });
+                addLog("info", "Steam API settings saved");
+                setSettingsSavedMessage("Steam API settings saved successfully!");
+                setShowSettingsSavedDialog(true);
+              } catch (e) {
+                addLog("error", `Save error: ${e}`);
+              }
+            }}
+            className="btn-steam w-full"
+          >
+            <Save className="w-4 h-4 mr-2" />
+            Save Steam API Settings
+          </Button>
         </CardContent>
       </Card>
 

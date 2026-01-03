@@ -52,6 +52,7 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
   const [isGameInstalled, setIsGameInstalled] = useState(false);
   const [hasUpdates, setHasUpdates] = useState(false);
   const [isDepotKeysOnly, setIsDepotKeysOnly] = useState(false);
+  const [appToken, setAppToken] = useState<string | undefined>(undefined); // From LUA addtoken()
 
   // Load Steam libraries when modal opens
   useEffect(() => {
@@ -148,7 +149,11 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
 
       setHasUpdates(anyOutdated);
       setDepots(parsedDepots);
+      setAppToken(data.app_token); // Store app token if present
       addLog("info", `Depots: ${parsedDepots.map(d => d.depot_id).join(", ")}`);
+      if (data.app_token) {
+        addLog("info", `AppToken found (length: ${data.app_token.length})`);
+      }
     } catch (error) {
       addLog("error", `Failed to load depot info: ${error}`);
     } finally {
@@ -275,7 +280,8 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
         settings.depotDownloaderPath,
         settings.steamlessPath,
         configToUse,
-        targetPath
+        targetPath,
+        appToken // Pass app token from LUA if present
       );
 
       setInstallProgress({
