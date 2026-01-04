@@ -578,6 +578,8 @@ pub struct DepotInfo {
     pub manifest_path: String,
     pub key: String,
     pub size: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oslist: Option<String>, // Parsed from LUA comment: "windows", "linux", "macos"
 }
 
 use std::collections::HashMap;
@@ -707,6 +709,7 @@ pub async fn extract_manifest_zip(zip_path: String) -> Result<GameManifestData, 
                         manifest_path: manifest_path.to_string_lossy().to_string(),
                         key,
                         size,
+                        oslist: None, // info.json doesn't have OS info
                     });
                 }
             }
@@ -862,9 +865,27 @@ pub async fn extract_manifest_zip(zip_path: String) -> Result<GameManifestData, 
                     } else {
                         comment.to_string()
                     };
+
+                    // Parse OS from comment (e.g., "Game Depot - Windows" -> "windows")
+                    let oslist = {
+                        let comment_lower = comment.to_lowercase();
+                        if comment_lower.contains("windows") || comment_lower.contains("- win") {
+                            Some("windows".to_string())
+                        } else if comment_lower.contains("linux") {
+                            Some("linux".to_string())
+                        } else if comment_lower.contains("mac")
+                            || comment_lower.contains("osx")
+                            || comment_lower.contains("darwin")
+                        {
+                            Some("macos".to_string())
+                        } else {
+                            None
+                        }
+                    };
+
                     eprintln!(
-                        "[extract_manifest_zip] Adding depot {} with name '{}'",
-                        depot_id, final_name
+                        "[extract_manifest_zip] Adding depot {} with name '{}', os={:?}",
+                        depot_id, final_name, oslist
                     );
 
                     depots.push(DepotInfo {
@@ -874,6 +895,7 @@ pub async fn extract_manifest_zip(zip_path: String) -> Result<GameManifestData, 
                         manifest_path: String::new(),
                         key: key.to_string(),
                         size: 0, // Will be filled from setManifestid
+                        oslist,
                     });
                 }
             }
@@ -5992,4 +6014,212 @@ pub async fn generate_achievements(
         "Generated schema for {} ({} achievements)",
         game_name, achievement_count
     ))
+}
+
+// ============================================================================
+// STEAMCMD INTEGRATION
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DepotSteamInfo {
+    pub name: Option<String>,
+    pub oslist: Option<String>,
+    pub size: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppSteamInfo {
+    pub app_id: String,
+    pub name: Option<String>,
+    pub oslist: Option<String>,
+    pub installdir: Option<String>,
+    pub depots: std::collections::HashMap<String, DepotSteamInfo>,
+}
+
+/// Get app/depot info from SteamCMD (optional, fails gracefully)
+#[tauri::command]
+pub async fn steamcmd_get_app_info(app_id: String) -> Result<AppSteamInfo, String> {
+    use std::process::{Command, Stdio};
+
+    // Try to run steamcmd
+    let output = Command::new("steamcmd")
+        .args([
+            "+login",
+            "anonymous",
+            "+app_info_update",
+            "1",
+            "+app_info_print",
+            &app_id,
+            "+quit",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .output();
+
+    let output = match output {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("[SteamCMD] Not available: {}", e);
+            return Err(format!("SteamCMD not available: {}", e));
+        }
+    };
+
+    if !output.status.success() {
+        return Err("SteamCMD failed".to_string());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+
+    // Parse the VDF-like output
+    parse_steamcmd_output(&app_id, &stdout)
+}
+
+fn parse_steamcmd_output(app_id: &str, output: &str) -> Result<AppSteamInfo, String> {
+    use std::collections::HashMap;
+
+    let mut info = AppSteamInfo {
+        app_id: app_id.to_string(),
+        name: None,
+        oslist: None,
+        installdir: None,
+        depots: HashMap::new(),
+    };
+
+    // Find the app info section
+    let app_marker = format!("\"{}\"", app_id);
+    let start_idx = match output.find(&app_marker) {
+        Some(idx) => idx,
+        None => return Err("App info not found in output".to_string()),
+    };
+
+    let app_section = &output[start_idx..];
+
+    // Parse key-value pairs from VDF-like format
+    // Look for "name", "oslist", "installdir" in common section
+    for line in app_section.lines() {
+        let trimmed = line.trim();
+
+        // Parse "key" "value" format
+        if let Some((key, value)) = parse_vdf_line(trimmed) {
+            match key.as_str() {
+                "name" if info.name.is_none() => info.name = Some(value),
+                "oslist" if info.oslist.is_none() => info.oslist = Some(value),
+                "installdir" if info.installdir.is_none() => info.installdir = Some(value),
+                _ => {}
+            }
+        }
+    }
+
+    // Parse depots section - look for depot IDs
+    // Depots are in the "depots" section with numeric keys
+    let mut in_depots = false;
+    let mut current_depot_id: Option<String> = None;
+    let mut brace_depth = 0;
+
+    for line in app_section.lines() {
+        let trimmed = line.trim();
+
+        if trimmed.contains("\"depots\"") {
+            in_depots = true;
+            continue;
+        }
+
+        if !in_depots {
+            continue;
+        }
+
+        if trimmed == "{" {
+            brace_depth += 1;
+            continue;
+        }
+        if trimmed == "}" {
+            brace_depth -= 1;
+            if brace_depth == 0 {
+                in_depots = false;
+                current_depot_id = None;
+            } else if brace_depth == 1 {
+                current_depot_id = None;
+            }
+            continue;
+        }
+
+        // Check if this is a depot ID (numeric key at depth 1)
+        if brace_depth == 1 {
+            if let Some(depot_id) = parse_depot_id(trimmed) {
+                current_depot_id = Some(depot_id.clone());
+                info.depots.insert(
+                    depot_id,
+                    DepotSteamInfo {
+                        name: None,
+                        oslist: None,
+                        size: None,
+                    },
+                );
+            }
+        }
+
+        // Parse depot properties at depth 2
+        if brace_depth >= 2 {
+            if let Some(ref depot_id) = current_depot_id {
+                if let Some((key, value)) = parse_vdf_line(trimmed) {
+                    if let Some(depot) = info.depots.get_mut(depot_id) {
+                        match key.as_str() {
+                            "name" => depot.name = Some(value),
+                            "oslist" => depot.oslist = Some(value),
+                            "size" | "download" => {
+                                if let Ok(size) = value.parse::<u64>() {
+                                    depot.size = Some(size);
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    eprintln!(
+        "[SteamCMD] Parsed {} depots for app {}",
+        info.depots.len(),
+        app_id
+    );
+
+    Ok(info)
+}
+
+fn parse_vdf_line(line: &str) -> Option<(String, String)> {
+    // Parse lines like: "key"  "value"
+    let line = line.trim();
+    if !line.starts_with('"') {
+        return None;
+    }
+
+    let parts: Vec<&str> = line.split('"').collect();
+    if parts.len() >= 4 {
+        let key = parts[1].to_string();
+        let value = parts[3].to_string();
+        return Some((key, value));
+    }
+
+    None
+}
+
+fn parse_depot_id(line: &str) -> Option<String> {
+    // Parse lines like: "123456" where 123456 is a numeric depot ID
+    let line = line.trim();
+    if !line.starts_with('"') {
+        return None;
+    }
+
+    let parts: Vec<&str> = line.split('"').collect();
+    if parts.len() >= 2 {
+        let id = parts[1];
+        // Check if it's numeric (depot ID)
+        if id.chars().all(|c| c.is_ascii_digit()) && !id.is_empty() {
+            return Some(id.to_string());
+        }
+    }
+
+    None
 }

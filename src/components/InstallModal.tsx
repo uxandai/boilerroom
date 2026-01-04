@@ -31,6 +31,7 @@ interface Depot {
   key: string;
   selected: boolean;
   isOutdated?: boolean; // true if installed manifest differs from new
+  oslist?: string; // From SteamCMD: "windows", "linux", "macos" etc
 }
 
 interface InstallModalProps {
@@ -127,6 +128,7 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
       addLog("info", `Found ${data.depots.length} depots for ${data.game_name}`);
 
       // Step 4: Convert to our Depot format and check for updates
+      // OS info is parsed from LUA comments (e.g., "Game Depot - Windows")
       let anyOutdated = false;
       const parsedDepots: Depot[] = data.depots.map((d: DepotInfo) => {
         const installedManifest = installed.find(i => i.depot_id === d.depot_id)?.manifest_id;
@@ -135,6 +137,7 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
           anyOutdated = true;
           addLog("info", `Depot ${d.depot_id}: Update available (${installedManifest} → ${d.manifest_id})`);
         }
+
         return {
           depot_id: d.depot_id,
           manifest_id: d.manifest_id,
@@ -144,6 +147,7 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
           key: d.key,
           selected: isOutdated, // Auto-select outdated depots
           isOutdated,
+          oslist: d.oslist, // From LUA comment parsing
         };
       });
 
@@ -401,33 +405,46 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
                   No depot information available
                 </div>
               ) : (
-                depots.map((depot) => (
-                  <div
-                    key={depot.depot_id}
-                    className="flex items-center gap-3 p-3 border-b border-[#1b2838] last:border-b-0 hover:bg-[#1b2838]/50"
-                  >
-                    <Checkbox
-                      id={depot.depot_id}
-                      checked={depot.selected}
-                      onCheckedChange={() => toggleDepot(depot.depot_id)}
-                    />
-                    <Label
-                      htmlFor={depot.depot_id}
-                      className="flex-1 cursor-pointer text-sm"
+                depots.map((depot) => {
+                  // Helper to render OS icons
+                  const getOsIcons = (oslist?: string) => {
+                    if (!oslist) return null;
+                    const icons: React.ReactNode[] = [];
+                    if (oslist.includes('windows')) icons.push(<span key="win" title="Windows">🪟</span>);
+                    if (oslist.includes('linux')) icons.push(<span key="linux" title="Linux">🐧</span>);
+                    if (oslist.includes('macos') || oslist.includes('darwin')) icons.push(<span key="mac" title="macOS">🍎</span>);
+                    return icons.length > 0 ? <span className="mr-2">{icons}</span> : null;
+                  };
+
+                  return (
+                    <div
+                      key={depot.depot_id}
+                      className="flex items-center gap-3 p-3 border-b border-[#1b2838] last:border-b-0 hover:bg-[#1b2838]/50"
                     >
-                      <span className="text-muted-foreground">{depot.depot_id}</span>
-                      <span className="mx-2">-</span>
-                      <span className="text-white" title={depot.name}>
-                        {depot.name.length > 40 ? depot.name.substring(0, 40) + "..." : depot.name}
-                      </span>
-                    </Label>
-                    {depot.size && (
-                      <span className="text-xs text-muted-foreground">
-                        {formatSize(depot.size)}
-                      </span>
-                    )}
-                  </div>
-                ))
+                      <Checkbox
+                        id={depot.depot_id}
+                        checked={depot.selected}
+                        onCheckedChange={() => toggleDepot(depot.depot_id)}
+                      />
+                      {getOsIcons(depot.oslist)}
+                      <Label
+                        htmlFor={depot.depot_id}
+                        className="flex-1 cursor-pointer text-sm"
+                      >
+                        <span className="text-muted-foreground">{depot.depot_id}</span>
+                        <span className="mx-2">-</span>
+                        <span className="text-white" title={depot.name}>
+                          {depot.name.length > 40 ? depot.name.substring(0, 40) + "..." : depot.name}
+                        </span>
+                      </Label>
+                      {depot.size && (
+                        <span className="text-xs text-muted-foreground">
+                          {formatSize(depot.size)}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
               )}
             </div>
 

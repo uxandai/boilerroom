@@ -105,6 +105,7 @@ export interface DepotInfo {
   manifest_path: string;
   key: string;
   size: number;
+  oslist?: string; // Parsed from LUA comment: "windows", "linux", "macos"
 }
 
 export interface GameManifestData {
@@ -558,4 +559,32 @@ export async function generateAchievements(
   steamUserId: string
 ): Promise<string> {
   return invoke<string>("generate_achievements", { appId, steamApiKey, steamUserId });
+}
+
+// ============================================================================
+// STEAMCMD INTEGRATION
+// ============================================================================
+
+export interface DepotSteamInfo {
+  name?: string;
+  oslist?: string;
+  size?: number;
+}
+
+export interface AppSteamInfo {
+  app_id: string;
+  name?: string;
+  oslist?: string;
+  installdir?: string;
+  depots: Record<string, DepotSteamInfo>;
+}
+
+// Get app/depot info from SteamCMD (optional, fails gracefully)
+export async function steamcmdGetAppInfo(appId: string): Promise<AppSteamInfo | null> {
+  try {
+    return await invoke<AppSteamInfo>("steamcmd_get_app_info", { appId });
+  } catch (error) {
+    console.log("[SteamCMD] Not available or failed:", error);
+    return null;
+  }
 }

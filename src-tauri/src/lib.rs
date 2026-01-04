@@ -138,6 +138,8 @@ pub fn run() {
             add_fake_app_id,
             add_app_token,
             generate_achievements,
+            // SteamCMD integration
+            steamcmd_get_app_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
