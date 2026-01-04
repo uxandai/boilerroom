@@ -81,6 +81,7 @@ pub fn run() {
             cancel_installation,
             pause_installation,
             resume_installation,
+            cleanup_cancelled_install,
             get_depot_downloader_path,
             cleanup_temp_files,
             // Steamless commands

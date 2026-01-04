@@ -209,6 +209,20 @@ export async function resumeInstallation(): Promise<void> {
   return invoke("resume_installation", {});
 }
 
+export async function cleanupCancelledInstall(
+  appId: string,
+  gameName: string,
+  libraryPath: string,
+  sshConfig: SshConfig
+): Promise<string> {
+  return invoke<string>("cleanup_cancelled_install", {
+    appId,
+    gameName,
+    libraryPath,
+    sshConfig
+  });
+}
+
 export async function findGameExecutables(
   gameDirectory: string,
   gameName: string

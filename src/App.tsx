@@ -106,6 +106,18 @@ function App() {
       listen("install-progress", (event: any) => {
         const payload = event.payload;
         const currentProgress = useAppStore.getState().installProgress;
+        const addLog = useAppStore.getState().addLog;
+
+        // Log state changes for visibility
+        if (currentProgress?.step !== payload.state) {
+          addLog("info", `[Install] State: ${payload.state} - ${payload.message}`);
+        }
+        // Log ETA updates periodically (every 10% progress)
+        if (payload.download_percent && Math.floor(payload.download_percent) % 10 === 0 &&
+          Math.floor(payload.download_percent) !== Math.floor(currentProgress?.downloadPercent || 0)) {
+          addLog("info", `[Install] Progress: ${Math.floor(payload.download_percent)}% - ETA: ${payload.eta || 'calculating...'} @ ${payload.download_speed || 'N/A'}`);
+        }
+
         useAppStore.getState().setInstallProgress({
           step: payload.state,
           appId: currentProgress?.appId || "unknown",

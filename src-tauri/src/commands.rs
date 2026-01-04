@@ -1439,6 +1439,122 @@ pub async fn resume_installation(install_manager: State<'_, InstallManager>) -> 
     Ok(())
 }
 
+/// Cleanup cancelled installation - delete partial files and ACF
+#[tauri::command]
+pub async fn cleanup_cancelled_install(
+    app_id: String,
+    game_name: String,
+    library_path: String,
+    ssh_config: SshConfig,
+) -> Result<String, String> {
+    use std::path::PathBuf;
+
+    let mut deleted_items = Vec::new();
+
+    // Calculate paths
+    // library_path is like "/home/user/.local/share/Steam"
+    // Game folder: library_path/steamapps/common/<game_name>
+    // ACF file: library_path/steamapps/appmanifest_<app_id>.acf
+
+    let steamapps_path = PathBuf::from(&library_path).join("steamapps");
+    let game_folder = steamapps_path.join("common").join(&game_name);
+    let acf_file = steamapps_path.join(format!("appmanifest_{}.acf", app_id));
+
+    if ssh_config.is_local {
+        // LOCAL: Delete directly
+
+        // Delete game folder
+        if game_folder.exists() {
+            match std::fs::remove_dir_all(&game_folder) {
+                Ok(_) => {
+                    eprintln!("[Cleanup] Deleted game folder: {:?}", game_folder);
+                    deleted_items.push(format!("Game folder: {}", game_folder.display()));
+                }
+                Err(e) => {
+                    eprintln!("[Cleanup] Failed to delete game folder: {}", e);
+                }
+            }
+        } else {
+            eprintln!("[Cleanup] Game folder not found: {:?}", game_folder);
+        }
+
+        // Delete ACF file
+        if acf_file.exists() {
+            match std::fs::remove_file(&acf_file) {
+                Ok(_) => {
+                    eprintln!("[Cleanup] Deleted ACF: {:?}", acf_file);
+                    deleted_items.push(format!("ACF manifest: appmanifest_{}.acf", app_id));
+                }
+                Err(e) => {
+                    eprintln!("[Cleanup] Failed to delete ACF: {}", e);
+                }
+            }
+        } else {
+            eprintln!("[Cleanup] ACF file not found: {:?}", acf_file);
+        }
+    } else {
+        // REMOTE: Delete via SSH
+        use std::net::TcpStream;
+        use std::time::Duration;
+
+        let remote_steamapps = format!("{}/steamapps", library_path.trim_end_matches('/'));
+        let remote_game_folder = format!("{}/common/{}", remote_steamapps, game_name);
+        let remote_acf = format!("{}/appmanifest_{}.acf", remote_steamapps, app_id);
+
+        let addr = format!("{}:{}", ssh_config.ip, ssh_config.port);
+        match TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(10)) {
+            Ok(tcp) => {
+                if let Ok(mut sess) = ssh2::Session::new() {
+                    sess.set_tcp_stream(tcp);
+                    if sess.handshake().is_ok()
+                        && sess
+                            .userauth_password(&ssh_config.username, &ssh_config.password)
+                            .is_ok()
+                    {
+                        // Delete game folder
+                        let cmd = format!("rm -rf \"{}\"", remote_game_folder);
+                        if let Ok(mut channel) = sess.channel_session() {
+                            if channel.exec(&cmd).is_ok() {
+                                let _ = channel.wait_close();
+                                if channel.exit_status().unwrap_or(-1) == 0 {
+                                    eprintln!(
+                                        "[Cleanup] Deleted remote game folder: {}",
+                                        remote_game_folder
+                                    );
+                                    deleted_items
+                                        .push(format!("Remote game folder: {}", game_name));
+                                }
+                            }
+                        }
+
+                        // Delete ACF
+                        let cmd = format!("rm -f \"{}\"", remote_acf);
+                        if let Ok(mut channel) = sess.channel_session() {
+                            if channel.exec(&cmd).is_ok() {
+                                let _ = channel.wait_close();
+                                if channel.exit_status().unwrap_or(-1) == 0 {
+                                    eprintln!("[Cleanup] Deleted remote ACF: {}", remote_acf);
+                                    deleted_items
+                                        .push(format!("Remote ACF: appmanifest_{}.acf", app_id));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                return Err(format!("Failed to connect for cleanup: {}", e));
+            }
+        }
+    }
+
+    if deleted_items.is_empty() {
+        Ok("No files found to clean up".to_string())
+    } else {
+        Ok(format!("Cleaned up: {}", deleted_items.join(", ")))
+    }
+}
+
 #[tauri::command]
 pub async fn upload_to_deck(
     config: SshConfig,

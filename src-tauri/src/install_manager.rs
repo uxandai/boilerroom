@@ -318,33 +318,7 @@ impl InstallManager {
                         
                         eprintln!("[DDMod] {}", line);
                         
-                        // Parse download speed
-                        if let Some(caps) = speed_re.captures(&line) {
-                            if let (Some(num), Some(unit)) = (caps.get(1), caps.get(2)) {
-                                let speed = format!("{} {}/s", num.as_str(), unit.as_str());
-                                
-                                // Calculate ETA based on elapsed time and progress
-                                let elapsed = start_time.elapsed().as_secs_f64();
-                                let progress = m.progress.lock().unwrap().download_percent;
-                                let eta = if progress > 0.0 && elapsed > 0.0 {
-                                    let total_time = elapsed * 100.0 / progress;
-                                    let remaining = total_time - elapsed;
-                                    if remaining > 3600.0 {
-                                        format!("{:.0}h {:.0}m", remaining / 3600.0, (remaining % 3600.0) / 60.0)
-                                    } else if remaining > 60.0 {
-                                        format!("{:.0}m {:.0}s", remaining / 60.0, remaining % 60.0)
-                                    } else {
-                                        format!("{:.0}s", remaining)
-                                    }
-                                } else {
-                                    "calculating...".to_string()
-                                };
-                                
-                                m.update_download_speed_eta(&speed, &eta);
-                            }
-                        }
-                        
-                        // Parse progress percentage
+                        // Parse progress percentage and calculate ETA
                         if let Some(caps) = percent_re.captures(&line) {
                             if let Some(pct_match) = caps.get(1) {
                                 if let Ok(depot_pct) = pct_match.as_str().parse::<f64>() {
@@ -355,7 +329,40 @@ impl InstallManager {
                                     let overall_pct = if is_local { raw_pct } else { raw_pct * 0.5 };
                                     eprintln!("[DDMod] Depot {} progress: {:.1}%, Overall: {:.1}%", depot.depot_id, depot_pct, overall_pct);
                                     m.update_download_percent(overall_pct);
+                                    
+                                    // Calculate ETA based on elapsed time and progress
+                                    let elapsed = start_time.elapsed().as_secs_f64();
+                                    let eta = if overall_pct > 0.5 && elapsed > 1.0 {
+                                        let total_time = elapsed * 100.0 / overall_pct;
+                                        let remaining = total_time - elapsed;
+                                        if remaining > 3600.0 {
+                                            format!("{:.0}h {:.0}m", remaining / 3600.0, (remaining % 3600.0) / 60.0)
+                                        } else if remaining > 60.0 {
+                                            format!("{:.0}m {:.0}s", remaining / 60.0, remaining % 60.0)
+                                        } else {
+                                            format!("{:.0}s", remaining.max(1.0))
+                                        }
+                                    } else {
+                                        "calculating...".to_string()
+                                    };
+                                    
+                                    // Speed not available from DepotDownloaderMod output
+                                    // (it doesn't print speed info, only percent + filename)
+                                    let speed = String::new();
+                                    
+                                    m.update_download_speed_eta(&speed, &eta);
                                 }
+                            }
+                        }
+                        
+                        // Also try to parse speed from line if present (backup)
+                        if let Some(caps) = speed_re.captures(&line) {
+                            if let (Some(num), Some(unit)) = (caps.get(1), caps.get(2)) {
+                                let speed = format!("{} {}/s", num.as_str(), unit.as_str());
+                                let p = m.progress.lock().unwrap();
+                                let current_eta = p.eta.clone();
+                                drop(p);
+                                m.update_download_speed_eta(&speed, &current_eta);
                             }
                         }
                     }
@@ -380,6 +387,44 @@ impl InstallManager {
             m.update_status("downloading", "Download complete!");
             // For local installs: download complete = 100%, for remote: 50% (rsync will be 50-100%)
             m.update_download_percent(if is_local { 100.0 } else { 50.0 });
+
+            // ========================================
+            // PHASE 2b: COPY MANIFESTS TO DEPOTCACHE
+            // ========================================
+            // Steam needs manifest files in steamapps/depotcache/ to recognize installed depots
+            // Without this, users need to "verify game files" for games to work
+            m.update_status("configuring", "Copying manifest files to depotcache...");
+            
+            // Calculate depotcache path: target_dir is steamapps/common, so parent is steamapps
+            let depotcache_dir = if is_local {
+                PathBuf::from(&target_dir).parent()
+                    .map(|p| p.join("depotcache"))
+                    .unwrap_or_else(|| PathBuf::from(&target_dir).join("../depotcache"))
+            } else {
+                // For remote, we'll handle via SSH later with ACF creation
+                PathBuf::new()
+            };
+            
+            if is_local && !depotcache_dir.as_os_str().is_empty() {
+                if let Err(e) = std::fs::create_dir_all(&depotcache_dir) {
+                    eprintln!("[Manifests] Warning: Failed to create depotcache dir: {}", e);
+                }
+                
+                for depot in &depots {
+                    let src = PathBuf::from(&depot.manifest_file);
+                    if src.exists() {
+                        if let Some(filename) = src.file_name() {
+                            let dest = depotcache_dir.join(filename);
+                            match std::fs::copy(&src, &dest) {
+                                Ok(_) => eprintln!("[Manifests] Copied {:?} to depotcache", filename),
+                                Err(e) => eprintln!("[Manifests] Failed to copy {:?}: {}", filename, e),
+                            }
+                        }
+                    } else {
+                        eprintln!("[Manifests] Source manifest not found: {:?}", src);
+                    }
+                }
+            }
 
             // NOTE: Steamless phase removed - users can run it manually from Settings if needed
             // This avoids the complexity of Wine/.NET installation during game downloads
@@ -917,6 +962,56 @@ impl InstallManager {
                         }
                     }
                     Err(e) => eprintln!("[ACF] Failed to connect: {}", e),
+                }
+            }
+
+            // ========================================
+            // PHASE 6b: COPY MANIFESTS TO REMOTE DEPOTCACHE
+            // ========================================
+            if !ssh_config.is_local {
+                use std::net::TcpStream;
+                use std::time::Duration;
+                
+                let steamapps_dir = target_dir.trim_end_matches('/').trim_end_matches("/common");
+                let depotcache_remote_path = format!("{}/depotcache", steamapps_dir);
+                
+                eprintln!("[Manifests] Copying manifests to remote depotcache: {}", depotcache_remote_path);
+                
+                let addr = format!("{}:{}", ssh_config.ip, ssh_config.port);
+                if let Ok(tcp) = TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(10)) {
+                    if let Ok(mut sess) = ssh2::Session::new() {
+                        sess.set_tcp_stream(tcp);
+                        if sess.handshake().is_ok() && sess.userauth_password(&ssh_config.username, &ssh_config.password).is_ok() {
+                            // Create depotcache directory
+                            if let Ok(mut channel) = sess.channel_session() {
+                                let mkdir_cmd = format!("mkdir -p \"{}\"", depotcache_remote_path);
+                                if channel.exec(&mkdir_cmd).is_ok() {
+                                    let _ = channel.wait_close();
+                                }
+                            }
+                            
+                            // Copy each manifest file via SFTP or exec+cat
+                            for depot in &depots {
+                                let src = PathBuf::from(&depot.manifest_file);
+                                if src.exists() {
+                                    if let Some(filename) = src.file_name() {
+                                        let remote_path = format!("{}/{}", depotcache_remote_path, filename.to_string_lossy());
+                                        if let Ok(content) = std::fs::read(&src) {
+                                            let cmd = format!("cat > \"{}\"", remote_path);
+                                            if let Ok(mut channel) = sess.channel_session() {
+                                                if channel.exec(&cmd).is_ok() {
+                                                    let _ = channel.write_all(&content);
+                                                    let _ = channel.send_eof();
+                                                    let _ = channel.wait_close();
+                                                    eprintln!("[Manifests] Copied {:?} to remote depotcache", filename);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

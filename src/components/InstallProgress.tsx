@@ -1,9 +1,21 @@
+import { useState } from "react";
 import { useAppStore } from "@/store/useAppStore";
 import { cancelInstallation, pauseInstallation, resumeInstallation } from "@/lib/api";
-import { X, Loader2, CheckCircle, AlertCircle, PauseCircle } from "lucide-react";
+import { X, Loader2, CheckCircle, AlertCircle, PauseCircle, Trash2, FolderOpen } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export function InstallProgress() {
   const { installProgress, setInstallProgress, addLog } = useAppStore();
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
 
   if (!installProgress || installProgress.step === "idle") {
     return null;
@@ -52,8 +64,14 @@ export function InstallProgress() {
     overallProgress = downloadProgress;
   }
 
-  const handleCancel = async () => {
-    addLog("warn", "Cancelling operation...");
+  const handleCancel = () => {
+    // Show cancel dialog instead of cancelling directly
+    setShowCancelDialog(true);
+  };
+
+  const handleCancelConfirm = async (cleanup: boolean) => {
+    setShowCancelDialog(false);
+    addLog("warn", `Cancelling operation...${cleanup ? " (cleanup enabled)" : " (keeping files)"}`);
     try {
       // Call appropriate cancel function based on operation type
       if (installProgress?.step === "transferring") {
@@ -63,6 +81,42 @@ export function InstallProgress() {
       } else {
         await cancelInstallation();
         addLog("info", "Installation cancelled");
+      }
+
+      // If cleanup is true, delete partial files
+      if (cleanup && installProgress?.appId && installProgress?.gameName) {
+        try {
+          const { cleanupCancelledInstall } = await import("@/lib/api");
+          const { sshConfig, connectionMode } = useAppStore.getState();
+
+          // Determine library path
+          let libraryPath: string;
+          if (connectionMode === "local") {
+            const { homeDir } = await import("@tauri-apps/api/path");
+            const home = await homeDir();
+            // homeDir returns something like "/home/pp/" - ensure proper path joining
+            libraryPath = home.endsWith('/')
+              ? `${home}.local/share/Steam`
+              : `${home}/.local/share/Steam`;
+          } else {
+            libraryPath = `/home/deck/.steam/steam`;
+          }
+
+          addLog("info", `Cleanup: appId=${installProgress.appId}, game=${installProgress.gameName}, library=${libraryPath}`);
+
+          const configToUse = { ...sshConfig, is_local: connectionMode === "local" };
+          const result = await cleanupCancelledInstall(
+            installProgress.appId,
+            installProgress.gameName,
+            libraryPath,
+            configToUse
+          );
+          addLog("info", result);
+        } catch (cleanupError) {
+          addLog("error", `Cleanup failed: ${cleanupError}`);
+        }
+      } else if (!cleanup) {
+        addLog("info", "Partial files kept - can be uninstalled from Library");
       }
     } catch (error) {
       addLog("error", `Cancel failed: ${error}`);
@@ -250,6 +304,40 @@ export function InstallProgress() {
           )}
         </div>
       </div>
+
+      {/* Cancel confirmation dialog */}
+      <AlertDialog open={showCancelDialog} onOpenChange={setShowCancelDialog}>
+        <AlertDialogContent className="bg-[#1b2838] border-[#2a475e]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">Cancel Installation?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              Do you want to keep or delete the partially downloaded files?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel
+              onClick={() => setShowCancelDialog(false)}
+              className="bg-[#2a475e] border-[#2a475e] text-white hover:bg-[#3a5a7e]"
+            >
+              Continue Download
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => handleCancelConfirm(false)}
+              className="bg-[#67c1f5] text-[#1b2838] hover:bg-[#7dd0ff] flex items-center gap-2"
+            >
+              <FolderOpen className="w-4 h-4" />
+              Keep Files
+            </AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => handleCancelConfirm(true)}
+              className="bg-red-600 text-white hover:bg-red-500 flex items-center gap-2"
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Files
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
