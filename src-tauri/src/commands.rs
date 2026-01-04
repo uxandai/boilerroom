@@ -1946,6 +1946,7 @@ pub async fn list_installed_games(config: SshConfig) -> Result<Vec<InstalledGame
 /// List installed games locally (for running on Steam Deck/Linux itself)
 #[tauri::command]
 pub async fn list_installed_games_local() -> Result<Vec<InstalledGame>, String> {
+    use std::collections::HashSet;
     use std::fs;
     use walkdir::WalkDir;
 
@@ -1956,11 +1957,51 @@ pub async fn list_installed_games_local() -> Result<Vec<InstalledGame>, String> 
 
     let mut games = Vec::new();
 
-    // Common Steam library paths on Linux/SteamOS
-    let library_paths = vec![
-        home.join(".local/share/Steam/steamapps"),
-        home.join(".steam/steam/steamapps"),
-    ];
+    // Get all Steam library paths by reading libraryfolders.vdf
+    let primary_steam_path = if cfg!(target_os = "macos") {
+        home.join("Library/Application Support/Steam")
+    } else {
+        home.join(".steam/steam")
+    };
+
+    let mut library_paths_set: HashSet<PathBuf> = HashSet::new();
+
+    // Add primary path (canonicalize to resolve symlinks)
+    if let Ok(canonical) = std::fs::canonicalize(&primary_steam_path) {
+        library_paths_set.insert(canonical.join("steamapps"));
+    } else if primary_steam_path.exists() {
+        library_paths_set.insert(primary_steam_path.join("steamapps"));
+    }
+
+    // Read secondary libraries from libraryfolders.vdf
+    let vdf_path = primary_steam_path.join("steamapps/libraryfolders.vdf");
+    if let Ok(content) = fs::read_to_string(&vdf_path) {
+        eprintln!(
+            "[list_installed_games_local] Reading VDF from {:?}",
+            vdf_path
+        );
+        for path_str in extract_library_paths_from_vdf(&content) {
+            let p = Path::new(&path_str);
+            let steamapps = if let Ok(canonical) = std::fs::canonicalize(p) {
+                canonical.join("steamapps")
+            } else {
+                p.join("steamapps")
+            };
+            if steamapps.exists() {
+                eprintln!(
+                    "[list_installed_games_local] Adding library: {:?}",
+                    steamapps
+                );
+                library_paths_set.insert(steamapps);
+            }
+        }
+    }
+
+    let library_paths: Vec<PathBuf> = library_paths_set.into_iter().collect();
+    eprintln!(
+        "[list_installed_games_local] Libraries to scan: {:?}",
+        library_paths
+    );
 
     for steamapps in library_paths {
         if !steamapps.exists() {
@@ -2209,6 +2250,47 @@ pub async fn check_game_installed(
     Ok(installed_depots)
 }
 
+/// Helper to extract library paths from VDF content using token-based parsing
+fn extract_library_paths_from_vdf(content: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    let mut tokens = Vec::new();
+
+    // Simple tokenizer: extract quoted strings
+    let mut in_quote = false;
+    let mut current_token = String::new();
+    let mut chars = content.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        if c == '"' {
+            if in_quote {
+                tokens.push(current_token.clone());
+                current_token.clear();
+                in_quote = false;
+            } else {
+                in_quote = true;
+            }
+        } else if in_quote {
+            current_token.push(c);
+        }
+    }
+
+    // Iterate tokens to find "path" key and its value
+    let mut i = 0;
+    while i < tokens.len() {
+        if tokens[i] == "path" && i + 1 < tokens.len() {
+            let path = &tokens[i + 1];
+            if !path.is_empty() {
+                paths.push(path.clone());
+            }
+            i += 2;
+        } else {
+            i += 1;
+        }
+    }
+
+    paths
+}
+
 /// Helper function to parse Steam library paths from libraryfolders.vdf
 fn get_steam_library_paths(sess: &ssh2::Session) -> Result<Vec<String>, String> {
     use std::collections::HashSet;
@@ -2229,21 +2311,9 @@ fn get_steam_library_paths(sess: &ssh2::Session) -> Result<Vec<String>, String> 
         "cat ~/.steam/steam/steamapps/libraryfolders.vdf 2>/dev/null || echo ''",
     )?;
 
-    // Parse paths from VDF (simple regex-like parsing)
-    for line in vdf_content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("\"path\"") {
-            // Extract path value: "path"		"/run/media/..."
-            if let Some(start) = trimmed.rfind('"') {
-                let before_last = &trimmed[..start];
-                if let Some(path_start) = before_last.rfind('"') {
-                    let path = &before_last[path_start + 1..];
-                    if !path.is_empty() {
-                        libraries_set.insert(path.to_string());
-                    }
-                }
-            }
-        }
+    // Use robust parsing
+    for path in extract_library_paths_from_vdf(&vdf_content) {
+        libraries_set.insert(path);
     }
 
     Ok(libraries_set.into_iter().collect())
@@ -2252,18 +2322,13 @@ fn get_steam_library_paths(sess: &ssh2::Session) -> Result<Vec<String>, String> 
 /// Get available Steam libraries on Steam Deck
 #[tauri::command]
 pub async fn get_steam_libraries(config: SshConfig) -> Result<Vec<String>, String> {
+    use std::collections::HashSet;
     use std::net::{IpAddr, SocketAddr};
 
     // LOCAL MODE
     if config.is_local {
-        // Find local Steam paths
-        // This is heuristic. On Mac it's different than Linux.
-        // User asked for "Local Mode" to manage local library.
-        // For Mac: ~/Library/Application Support/Steam
-        // For Linux: ~/.steam/steam
-
         let home = dirs::home_dir().ok_or("Could not find home directory")?;
-        let mut paths = Vec::new();
+        let mut paths_set: HashSet<String> = HashSet::new();
 
         let primary_steam_path = if cfg!(target_os = "macos") {
             home.join("Library/Application Support/Steam")
@@ -2271,33 +2336,49 @@ pub async fn get_steam_libraries(config: SshConfig) -> Result<Vec<String>, Strin
             home.join(".steam/steam")
         };
 
+        eprintln!(
+            "[get_steam_libraries] Primary path: {:?}",
+            primary_steam_path
+        );
+
         if primary_steam_path.exists() {
-            paths.push(primary_steam_path.to_string_lossy().to_string());
+            // Canonicalize to resolve symlinks (e.g., ~/.steam/steam -> ~/.local/share/Steam)
+            let canonical_primary =
+                if let Ok(canonical) = std::fs::canonicalize(&primary_steam_path) {
+                    canonical.to_string_lossy().to_string()
+                } else {
+                    primary_steam_path.to_string_lossy().to_string()
+                };
+            eprintln!(
+                "[get_steam_libraries] Canonical primary: {}",
+                canonical_primary
+            );
+            paths_set.insert(canonical_primary);
 
             // Check libraryfolders.vdf locally
             let vdf_path = primary_steam_path.join("steamapps/libraryfolders.vdf");
-            if let Ok(content) = std::fs::read_to_string(vdf_path) {
-                // Simple parse
-                for line in content.lines() {
-                    let trimmed = line.trim();
-                    if trimmed.starts_with("\"path\"") {
-                        if let Some(start) = trimmed.rfind('"') {
-                            let before_last = &trimmed[..start];
-                            if let Some(path_start) = before_last.rfind('"') {
-                                let path = &before_last[path_start + 1..];
-                                if !path.is_empty() {
-                                    paths.push(path.to_string());
-                                }
-                            }
-                        }
-                    }
+            if let Ok(content) = std::fs::read_to_string(&vdf_path) {
+                eprintln!("[get_steam_libraries] Reading VDF from {:?}", vdf_path);
+                let vdf_paths = extract_library_paths_from_vdf(&content);
+                eprintln!("[get_steam_libraries] VDF paths found: {:?}", vdf_paths);
+
+                for path_str in vdf_paths {
+                    // Canonicalize VDF paths too
+                    let p = Path::new(&path_str);
+                    let canonical = if let Ok(c) = std::fs::canonicalize(p) {
+                        c.to_string_lossy().to_string()
+                    } else {
+                        path_str
+                    };
+                    eprintln!("[get_steam_libraries] Adding VDF path: {}", canonical);
+                    paths_set.insert(canonical);
                 }
             }
         }
 
-        // Dedup
+        let mut paths: Vec<String> = paths_set.into_iter().collect();
         paths.sort();
-        paths.dedup();
+        eprintln!("[get_steam_libraries] Final paths: {:?}", paths);
 
         return Ok(paths);
     }

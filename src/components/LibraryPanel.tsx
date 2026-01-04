@@ -237,7 +237,8 @@ export function LibraryPanel() {
 
           {games.length > 0 && (
             <div className="space-y-2">
-              {games
+              {[...games]
+                .sort((a, b) => a.name.localeCompare(b.name))
                 .filter(game => !showOnlyTonTonDeck || game.has_depotdownloader_marker)
                 .map((game) => (
                   <div

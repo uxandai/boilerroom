@@ -181,44 +181,19 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
     }
   };
 
-  // LOCAL mode: detect local Steam libraries
+  // LOCAL mode: detect local Steam libraries via backend API
   const loadLocalLibraries = async () => {
     setIsLoadingLibraries(true);
     try {
-      const { homeDir } = await import("@tauri-apps/api/path");
-      let home = await homeDir();
-      // Ensure home has trailing slash
-      if (!home.endsWith("/") && !home.endsWith("\\")) {
-        home = home + "/";
-      }
-      const platform = navigator.platform.toLowerCase();
-      let localLibraries: string[] = [];
-
-      addLog("info", `[DEBUG] Home directory: ${home}, Platform: ${platform}`);
-
-      if (platform.includes('linux')) {
-        // Linux/Steam Deck
-        localLibraries = [
-          `${home}.local/share/Steam`,
-          `${home}.steam/steam`,
-        ];
-      } else if (platform.includes('mac') || platform.includes('darwin')) {
-        // macOS
-        localLibraries = [
-          `${home}Library/Application Support/Steam`,
-          `${home}Games`, // Fallback
-        ];
-      } else {
-        // Windows
-        localLibraries = [
-          "C:\\Program Files (x86)\\Steam",
-          "C:\\Program Files\\Steam",
-        ];
-      }
-
-      setLibraries(localLibraries);
-      if (localLibraries.length > 0) {
-        setSelectedLibrary(localLibraries[0]);
+      addLog("info", "[DEBUG] Calling getSteamLibraries with is_local=true");
+      // Call backend with is_local flag to get properly deduplicated library paths
+      const localConfig = { ...sshConfig, is_local: true };
+      const libs = await getSteamLibraries(localConfig);
+      addLog("info", `[DEBUG] getSteamLibraries returned: ${JSON.stringify(libs)}`);
+      const sorted = sortSteamLibraries(libs);
+      setLibraries(sorted);
+      if (sorted.length > 0) {
+        setSelectedLibrary(sorted[0]);
       }
     } catch (error) {
       console.error("Failed to load local libraries:", error);
