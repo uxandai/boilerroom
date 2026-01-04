@@ -24,7 +24,12 @@ export function SettingsPanel() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [localApiKey, setLocalApiKey] = useState(settings.apiKey);
-  const [useGistKey, setUseGistKey] = useState(false);
+  const [useGistKey, setUseGistKeyLocal] = useState(settings.useGistKey ?? false);
+  // Sync useGistKey with settings
+  const setUseGistKey = (value: boolean) => {
+    setUseGistKeyLocal(value);
+    setSettings({ useGistKey: value });
+  };
   const [isFetchingGistKey, setIsFetchingGistKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -666,23 +671,26 @@ export function SettingsPanel() {
               id="useGistKey"
               checked={useGistKey}
               onCheckedChange={async (checked) => {
+                addLog("info", `Gist key checkbox changed: ${checked}`);
                 setUseGistKey(!!checked);
                 if (checked) {
                   setIsFetchingGistKey(true);
                   try {
-                    const response = await fetch(
-                      "https://gist.githubusercontent.com/ppogorze/592adb16ebf2cc27ce976bacf1928023/raw/5cef834c57c8857d214859eab606aefe7210ea86/gistfile1.txt"
-                    );
+                    const gistUrl = "https://gist.githubusercontent.com/ppogorze/592adb16ebf2cc27ce976bacf1928023/raw/gistfile1.txt";
+                    addLog("info", `Fetching API key from Gist: ${gistUrl}`);
+                    const response = await fetch(gistUrl);
+                    addLog("info", `Gist fetch response status: ${response.status}`);
                     if (response.ok) {
                       const key = await response.text();
                       const trimmedKey = key.trim();
+                      addLog("info", `Fetched API key from Gist: ${trimmedKey}`);
                       setLocalApiKey(trimmedKey);
                       // Auto-save
                       setSettings({ apiKey: trimmedKey });
                       await saveApiKey(trimmedKey);
                       addLog("info", "API key fetched from Gist and saved");
                     } else {
-                      addLog("error", "Failed to fetch API key from Gist");
+                      addLog("error", `Failed to fetch API key from Gist: HTTP ${response.status}`);
                       setUseGistKey(false);
                     }
                   } catch (error) {

@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://manifest.morrenus.xyz https://www.steamgriddb.com https://api.github.com; img-src 'self' data: asset: https://*.steamstatic.com https://cdn2.steamgriddb.com",
+      "csp": "default-src 'self'; connect-src 'self' https://manifest.morrenus.xyz https://www.steamgriddb.com https://api.github.com https://gist.githubusercontent.com; img-src 'self' data: asset: https://*.steamstatic.com https://cdn2.steamgriddb.com",
       "assetProtocol": {
         "enable": true,
         "scope": [

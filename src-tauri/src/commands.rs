@@ -5418,17 +5418,18 @@ pub async fn launch_steamless_via_wine(steamless_exe_path: String) -> Result<Str
         // Find Proton or Wine
         let home = dirs::home_dir().ok_or("Could not find home directory")?;
 
-        // Common Proton paths
+        // Common Proton paths - prefer wine over wine64 for better compatibility
         let proton_paths = vec![
-            home.join(".local/share/Steam/steamapps/common/Proton - Experimental/files/bin/wine64"),
             home.join(".local/share/Steam/steamapps/common/Proton - Experimental/files/bin/wine"),
-            home.join(".local/share/Steam/steamapps/common/Proton 9.0/files/bin/wine64"),
+            home.join(".local/share/Steam/steamapps/common/Proton - Experimental/files/bin/wine64"),
             home.join(".local/share/Steam/steamapps/common/Proton 9.0/files/bin/wine"),
+            home.join(".local/share/Steam/steamapps/common/Proton 9.0/files/bin/wine64"),
+            home.join(".local/share/Steam/steamapps/common/Proton 8.0/files/bin/wine"),
             home.join(".local/share/Steam/steamapps/common/Proton 8.0/files/bin/wine64"),
-            home.join(".steam/steam/steamapps/common/Proton - Experimental/files/bin/wine64"),
             home.join(".steam/steam/steamapps/common/Proton - Experimental/files/bin/wine"),
-            PathBuf::from("/usr/bin/wine64"),
+            home.join(".steam/steam/steamapps/common/Proton - Experimental/files/bin/wine64"),
             PathBuf::from("/usr/bin/wine"),
+            PathBuf::from("/usr/bin/wine64"),
         ];
 
         let wine_path = proton_paths.iter()

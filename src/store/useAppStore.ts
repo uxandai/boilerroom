@@ -59,6 +59,7 @@ export interface Settings {
   steamGridDbApiKey: string; // Optional SteamGridDB API key for game artwork
   steamApiKey: string; // Steam Web API key for achievements
   steamUserId: string; // Steam User ID for achievements (format: [U:1:xxxxxxxxx])
+  useGistKey?: boolean; // Whether to use shared API key from Gist
 }
 
 interface AppState {
@@ -122,6 +123,7 @@ const defaultSettings: Settings = {
   steamGridDbApiKey: "",
   steamApiKey: "",
   steamUserId: "",
+  useGistKey: false,
 };
 
 export const useAppStore = create<AppState>((set) => ({
