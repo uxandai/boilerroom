@@ -1,0 +1,197 @@
+<Window x:Class="SolusManifestApp.Views.Dialogs.ProfileGamesDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Profile Games"
+        Height="550"
+        Width="600"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="CanResize">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="50"
+                      ResizeBorderThickness="5"
+                      CornerRadius="12"
+                      GlassFrameThickness="0"
+                      UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Border Background="{DynamicResource PrimaryDarkBrush}"
+            CornerRadius="12"
+            BorderBrush="{DynamicResource SecondaryDarkBrush}"
+            BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="50"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0"
+                    Background="{DynamicResource CardBackgroundBrush}"
+                    CornerRadius="12,12,0,0"
+                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
+                <Grid>
+                    <TextBlock x:Name="TitleText"
+                               Text="Games in Profile"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource AccentBrush}"
+                               VerticalAlignment="Center"
+                               Margin="20,0"/>
+
+                    <Button Width="46" Height="32"
+                            HorizontalAlignment="Right"
+                            Background="Transparent"
+                            Foreground="{DynamicResource TextPrimaryBrush}"
+                            BorderThickness="0"
+                            Padding="0"
+                            Click="CloseButton_Click"
+                            Cursor="Hand"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    Width="46" Height="32">
+                                                <TextBlock Text="✕"
+                                                           FontSize="14"
+                                                           Foreground="{TemplateBinding Foreground}"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#40FF0000"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <Grid Grid.Row="1" Margin="20">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock x:Name="ProfileInfoText"
+                           Grid.Row="0"
+                           FontSize="14"
+                           Foreground="{DynamicResource TextSecondaryBrush}"
+                           Margin="0,0,0,15"/>
+
+                <TextBox x:Name="SearchBox"
+                         Grid.Row="1"
+                         FontSize="13"
+                         Padding="10,8"
+                         Style="{StaticResource ModernTextBoxStyle}"
+                         Margin="0,0,0,15"
+                         TextChanged="SearchBox_TextChanged">
+                    <TextBox.Resources>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource ModernTextBoxStyle}">
+                            <Style.Triggers>
+                                <Trigger Property="Text" Value="">
+                                    <Setter Property="Background">
+                                        <Setter.Value>
+                                            <VisualBrush Stretch="None" AlignmentX="Left" AlignmentY="Center">
+                                                <VisualBrush.Visual>
+                                                    <TextBlock Text="Search games..."
+                                                               FontSize="13"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               Margin="12,0,0,0"
+                                                               VerticalAlignment="Center"/>
+                                                </VisualBrush.Visual>
+                                            </VisualBrush>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBox.Resources>
+                </TextBox>
+
+                <ScrollViewer Grid.Row="2"
+                              VerticalScrollBarVisibility="Auto"
+                              Margin="0,0,0,15">
+                    <ItemsControl x:Name="GamesListBox">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource CardBackgroundBrush}"
+                                        CornerRadius="8"
+                                        Margin="0,0,0,8"
+                                        Padding="12">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontSize="13"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                <TextBlock Text="App ID: "
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                <TextBlock Text="{Binding AppId}"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource AccentBrush}"/>
+                                                <TextBlock Text=" | Depots: "
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                                           Margin="10,0,0,0"/>
+                                                <TextBlock Text="{Binding DepotCount}"
+                                                           FontSize="11"
+                                                           Foreground="{DynamicResource AccentBrush}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <Button Grid.Column="1"
+                                                Content="Remove"
+                                                Click="RemoveGame_Click"
+                                                Tag="{Binding AppId}"
+                                                FontSize="11"
+                                                Height="28"
+                                                Padding="12,0"
+                                                VerticalAlignment="Center">
+                                            <Button.Style>
+                                                <Style TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+                                                    <Setter Property="Foreground" Value="#FF6B6B"/>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <StackPanel Grid.Row="3"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right">
+                    <Button Content="Close"
+                            Click="Close_Click"
+                            Style="{StaticResource SecondaryButtonStyle}"
+                            FontSize="14"
+                            MinWidth="100"/>
+                </StackPanel>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

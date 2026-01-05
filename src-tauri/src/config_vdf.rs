@@ -36,13 +36,29 @@ pub fn add_decryption_keys_to_vdf(content: &str, depot_keys: &[(String, String)]
         result.push_str(&content[insert_pos..]);
         result
     } else {
-        // No "depots" section found - need to add it
-        // Look for position after "InstallConfigStore" opening brace
-        if let Some(insert_pos) = find_install_config_store_position(content) {
-            let mut result = String::with_capacity(content.len() + new_entries.len() + 50);
+        // No "depots" section found - need to add full nested structure:
+        // InstallConfigStore > Software > Valve > Steam > depots
+        if let Some(insert_pos) = find_steam_section_position(content) {
+            // Found "Steam" section inside Software > Valve, add depots inside it
+            let mut result = String::with_capacity(content.len() + new_entries.len() + 100);
             result.push_str(&content[..insert_pos]);
-            result.push_str("\n\t\"depots\"\n\t{\n");
+            result.push_str("\t\t\t\t\"depots\"\n\t\t\t\t{\n");
             result.push_str(&new_entries);
+            result.push_str("\t\t\t\t}\n");
+            result.push_str(&content[insert_pos..]);
+            result
+        } else if let Some(insert_pos) = find_install_config_store_position(content) {
+            // No Steam section, create full nested structure
+            let mut result = String::with_capacity(content.len() + new_entries.len() + 200);
+            result.push_str(&content[..insert_pos]);
+            result.push_str("\t\"Software\"\n\t{\n");
+            result.push_str("\t\t\"Valve\"\n\t\t{\n");
+            result.push_str("\t\t\t\"Steam\"\n\t\t\t{\n");
+            result.push_str("\t\t\t\t\"depots\"\n\t\t\t\t{\n");
+            result.push_str(&new_entries);
+            result.push_str("\t\t\t\t}\n");
+            result.push_str("\t\t\t}\n");
+            result.push_str("\t\t}\n");
             result.push_str("\t}\n");
             result.push_str(&content[insert_pos..]);
             result
@@ -100,12 +116,15 @@ fn extract_existing_depot_ids(content: &str) -> HashSet<String> {
 }
 
 /// Build VDF entries for the new depot keys
+/// Uses 5 levels of indentation to match Steam's config.vdf structure:
+/// InstallConfigStore > Software > Valve > Steam > depots > {depot_id}
 fn build_depot_entries(keys: &[&(String, String)]) -> String {
     let mut result = String::new();
 
     for (depot_id, key) in keys {
+        // 5 tabs = inside: InstallConfigStore > Software > Valve > Steam > depots
         result.push_str(&format!(
-            "\t\t\"{}\"\n\t\t{{\n\t\t\t\"DecryptionKey\"\t\t\"{}\"\n\t\t}}\n",
+            "\t\t\t\t\t\"{}\"\n\t\t\t\t\t{{\n\t\t\t\t\t\t\"DecryptionKey\"\t\t\"{}\"\n\t\t\t\t\t}}\n",
             depot_id, key
         ));
     }
@@ -153,6 +172,44 @@ fn find_install_config_store_position(content: &str) -> Option<usize> {
         .count();
 
     Some(absolute_pos + skip)
+}
+
+/// Find position after "Steam" section { inside Software > Valve > Steam
+/// This is the correct location for the "depots" section in config.vdf
+fn find_steam_section_position(content: &str) -> Option<usize> {
+    // Look for "Steam" section that's inside "Valve" (not standalone)
+    // The pattern in a real config.vdf is:
+    // "Software" > "Valve" > "Steam" > { ... }
+    let pattern = "\"Steam\"";
+    
+    // Find all occurrences and look for one that's inside Valve section
+    let mut search_start = 0;
+    while let Some(pos) = content[search_start..].find(pattern) {
+        let absolute_pos = search_start + pos;
+        
+        // Check if this is likely inside a Valve section by looking at prior content
+        let prior = &content[..absolute_pos];
+        if prior.contains("\"Valve\"") && prior.contains("\"Software\"") {
+            // Found Steam inside Software > Valve structure
+            let after = &content[absolute_pos..];
+            if let Some(brace_pos) = after.find('{') {
+                let insert_pos = absolute_pos + brace_pos + 1;
+                
+                // Skip newline after brace
+                let remainder = &content[insert_pos..];
+                let skip = remainder
+                    .chars()
+                    .take_while(|c| *c == '\n' || *c == '\r')
+                    .count();
+                
+                return Some(insert_pos + skip);
+            }
+        }
+        
+        search_start = absolute_pos + pattern.len();
+    }
+    
+    None
 }
 
 /// Extract a quoted string value from a VDF line

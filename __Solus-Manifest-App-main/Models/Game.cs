@@ -1,0 +1,33 @@
+using System;
+
+namespace SolusManifestApp.Models
+{
+    public class Game
+    {
+        public string AppId { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public long SizeBytes { get; set; }
+        public string Version { get; set; } = "1.0";
+        public DateTime? InstallDate { get; set; }
+        public DateTime? LastUpdated { get; set; }
+        public string IconUrl { get; set; } = string.Empty;
+        public bool IsInstalled { get; set; }
+        public string LocalPath { get; set; } = string.Empty;
+
+        public string SizeFormatted => FormatBytes(SizeBytes);
+
+        private static string FormatBytes(long bytes)
+        {
+            string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+            double len = bytes;
+            int order = 0;
+            while (len >= 1024 && order < sizes.Length - 1)
+            {
+                order++;
+                len /= 1024;
+            }
+            return $"{len:0.##} {sizes[order]}";
+        }
+    }
+}
