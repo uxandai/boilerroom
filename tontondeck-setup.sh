@@ -282,7 +282,7 @@ AdditionalApps:
 DlcData:
 
 #Used to retrieve ProductInfo from Steam servers for some games
-AppTokens:
+#AppTokens:
 
 #Fake Steam being offline for specified AppIds. Same format as AppIds
 FakeOffline:

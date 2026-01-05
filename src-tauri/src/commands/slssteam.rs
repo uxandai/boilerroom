@@ -523,62 +523,75 @@ fi
 }
 
 /// Modify a section in SLSsteam config.yaml
-/// Used for adding AppTokens, FakeAppIds, etc.
+/// Used for adding FakeAppIds, etc.
+/// Produces properly formatted YAML with 2-space indentation:
+/// ```yaml
+/// FakeAppIds:
+///   1234: 480
+///   5678: 480
+/// ```
 pub fn modify_slssteam_config_section(content: &str, section: &str, key: &str, value: &str) -> String {
-    // Check if key already exists in section
-    let section_key = format!("{}:", section);
-    let key_pattern = format!("  {}: ", key);
+    let section_header = format!("{}:", section);
+    let key_entry = format!("  {}: {}", key, value); // 2-space indent
     
-    if content.contains(&key_pattern) {
-        // Key exists, update it
+    // Check if this exact key already exists (to update rather than duplicate)
+    let key_pattern_exact = format!("  {}:", key);
+    
+    let key_exists = content.lines().any(|line| {
+        let trimmed = line.trim();
+        trimmed.starts_with(&format!("{}: ", key)) || trimmed == format!("{}:", key)
+    });
+    
+    if key_exists {
+        // Key exists, update its value
         let mut result = String::new();
-        let mut in_section = false;
-        let mut found_key = false;
-        
         for line in content.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with(&format!("{}:", section)) {
-                in_section = true;
-                result.push_str(line);
-                result.push('\n');
-            } else if in_section && trimmed.starts_with(&format!("{}: ", key)) {
-                result.push_str(&format!("  {}: {}\n", key, value));
-                found_key = true;
-            } else if in_section && !trimmed.is_empty() && !trimmed.starts_with('#') && !trimmed.starts_with(' ') {
-                in_section = false;
-                result.push_str(line);
+            if trimmed.starts_with(&format!("{}: ", key)) || trimmed.starts_with(&key_pattern_exact) {
+                result.push_str(&key_entry);
                 result.push('\n');
             } else {
                 result.push_str(line);
                 result.push('\n');
             }
         }
-        if !found_key && !result.is_empty() {
-            result.pop(); // Remove trailing newline
-        }
         return result;
     }
     
-    // Check if section exists
-    if content.contains(&section_key) {
-        // Section exists, add key under it
-        let mut result = String::new();
-        for line in content.lines() {
-            result.push_str(line);
+    // Key doesn't exist - add it under the section header
+    let mut result = String::new();
+    let mut found_section = false;
+    
+    for line in content.lines() {
+        let trimmed = line.trim();
+        
+        result.push_str(line);
+        result.push('\n');
+        
+        // Check if this line is our target section header (e.g., "FakeAppIds:")
+        // The section header should be exactly "Section:" with nothing else on the line
+        if trimmed == section_header || (trimmed.starts_with(&section_header) && trimmed.len() == section_header.len()) {
+            // Add our new entry right after the section header
+            result.push_str(&key_entry);
             result.push('\n');
-            if line.trim().starts_with(&section_key) {
-                result.push_str(&format!("  {}: {}\n", key, value));
-            }
+            found_section = true;
         }
-        return result;
     }
     
-    // Section doesn't exist, add it
-    let mut result = content.to_string();
-    if !result.ends_with('\n') && !result.is_empty() {
+    // If section wasn't found, append it at the end
+    if !found_section {
+        if !result.is_empty() && !result.ends_with('\n') {
+            result.push('\n');
+        }
+        if !result.is_empty() && !result.ends_with("\n\n") {
+            result.push('\n');
+        }
+        result.push_str(&section_header);
+        result.push('\n');
+        result.push_str(&key_entry);
         result.push('\n');
     }
-    result.push_str(&format!("\n{}:\n  {}: {}\n", section, key, value));
+    
     result
 }
 
@@ -609,32 +622,33 @@ pub async fn add_fake_app_id(
     Ok(format!("Added FakeAppId: {} -> {}", app_id, fake_app_id))
 }
 
-/// Add an app token to SLSsteam config
-#[tauri::command]
-pub async fn add_app_token(
-    app_handle: tauri::AppHandle,
-    app_id: String,
-    token: String,
-) -> Result<String, String> {
-    let _ = app_handle;
-    
-    let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let config_path = home.join(".config/SLSsteam/config.yaml");
-    
-    if !config_path.exists() {
-        return Err("SLSsteam config not found".to_string());
-    }
-    
-    let content = std::fs::read_to_string(&config_path)
-        .map_err(|e| format!("Failed to read config: {}", e))?;
-    
-    let new_config = modify_slssteam_config_section(&content, "AppTokens", &app_id, &token);
-    
-    std::fs::write(&config_path, &new_config)
-        .map_err(|e| format!("Failed to write config: {}", e))?;
-    
-    Ok(format!("Added AppToken for: {}", app_id))
-}
+// NOTE: AppTokens functionality is disabled - not needed for current workflow
+// /// Add an app token to SLSsteam config
+// #[tauri::command]
+// pub async fn add_app_token(
+//     app_handle: tauri::AppHandle,
+//     app_id: String,
+//     token: String,
+// ) -> Result<String, String> {
+//     let _ = app_handle;
+//     
+//     let home = dirs::home_dir().ok_or("Could not find home directory")?;
+//     let config_path = home.join(".config/SLSsteam/config.yaml");
+//     
+//     if !config_path.exists() {
+//         return Err("SLSsteam config not found".to_string());
+//     }
+//     
+//     let content = std::fs::read_to_string(&config_path)
+//         .map_err(|e| format!("Failed to read config: {}", e))?;
+//     
+//     let new_config = modify_slssteam_config_section(&content, "AppTokens", &app_id, &token);
+//     
+//     std::fs::write(&config_path, &new_config)
+//         .map_err(|e| format!("Failed to write config: {}", e))?;
+//     
+//     Ok(format!("Added AppToken for: {}", app_id))
+// }
 
 /// Generate achievements file (placeholder - not implemented)
 #[tauri::command]

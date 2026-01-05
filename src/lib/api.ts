@@ -539,14 +539,16 @@ export async function checkMorrenusApiStatus(apiKey: string): Promise<MorrenusAp
 // ============================================================================
 
 // Add FakeAppId mapping for Online-Fix (maps to 480 for Spacewar networking)
-export async function addFakeAppId(config: SshConfig, appId: string): Promise<void> {
-  return invoke<void>("add_fake_app_id", { config, appId });
+// Note: _config is currently unused (local operation only) but kept in API for future remote support
+export async function addFakeAppId(_config: SshConfig, appId: string, fakeAppId: string = "480"): Promise<void> {
+  return invoke<void>("add_fake_app_id", { appId, fakeAppId });
 }
 
-// Add AppToken entry to SLSsteam config
-export async function addAppToken(config: SshConfig, appId: string, token: string): Promise<void> {
-  return invoke<void>("add_app_token", { config, appId, token });
-}
+// NOTE: AppTokens functionality disabled - not needed for current workflow
+// // Add AppToken entry to SLSsteam config
+// export async function addAppToken(config: SshConfig, appId: string, token: string): Promise<void> {
+//   return invoke<void>("add_app_token", { config, appId, token });
+// }
 
 // ============================================================================
 // ACHIEVEMENT GENERATION

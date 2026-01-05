@@ -803,61 +803,63 @@ impl InstallManager {
             }
 
             // ========================================
-            // PHASE 5c: ADD APP TOKEN TO SLSsteam CONFIG (if present)
+            // PHASE 5c: ADD APP TOKEN TO SLSsteam CONFIG (DISABLED - not needed)
             // ========================================
-            if let Some(ref token) = app_token_clone {
-                eprintln!("[AppToken] Adding app token for {} (len={})", app_id_clone, token.len());
-                
-                if ssh_config.is_local {
-                    if let Some(home) = dirs::home_dir() {
-                        let config_path = home.join(".config/SLSsteam/config.yaml");
-                        if config_path.exists() {
-                            if let Ok(content) = std::fs::read_to_string(&config_path) {
-                                let new_config = crate::commands::modify_slssteam_config_section(
-                                    &content, "AppTokens", &app_id_clone, token
-                                );
-                                if std::fs::write(&config_path, &new_config).is_ok() {
-                                    eprintln!("[AppToken] Added token for {} to local config", app_id_clone);
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    // Remote: update via SSH
-                    use std::net::TcpStream;
-                    use std::time::Duration;
-                    use std::io::Read;
-                    
-                    let addr = format!("{}:{}", ssh_config.ip, ssh_config.port);
-                    if let Ok(tcp) = TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(10)) {
-                        if let Ok(mut sess) = ssh2::Session::new() {
-                            sess.set_tcp_stream(tcp);
-                            if sess.handshake().is_ok() && sess.userauth_password(&ssh_config.username, &ssh_config.password).is_ok() {
-                                let mut content = String::new();
-                                if let Ok(mut channel) = sess.channel_session() {
-                                    if channel.exec("cat ~/.config/SLSsteam/config.yaml 2>/dev/null || echo ''").is_ok() {
-                                        let _ = channel.read_to_string(&mut content);
-                                        let _ = channel.wait_close();
-                                    }
-                                }
-                                
-                                let new_config = crate::commands::modify_slssteam_config_section(
-                                    &content, "AppTokens", &app_id_clone, token
-                                );
-                                
-                                if let Ok(mut channel) = sess.channel_session() {
-                                    if channel.exec("cat > ~/.config/SLSsteam/config.yaml").is_ok() {
-                                        let _ = channel.write_all(new_config.as_bytes());
-                                        let _ = channel.send_eof();
-                                        let _ = channel.wait_close();
-                                        eprintln!("[AppToken] Added token for {} on remote", app_id_clone);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            // NOTE: AppTokens functionality disabled - not needed for current workflow
+            // if let Some(ref token) = app_token_clone {
+            //     eprintln!("[AppToken] Adding app token for {} (len={})", app_id_clone, token.len());
+            //     
+            //     if ssh_config.is_local {
+            //         if let Some(home) = dirs::home_dir() {
+            //             let config_path = home.join(".config/SLSsteam/config.yaml");
+            //             if config_path.exists() {
+            //                 if let Ok(content) = std::fs::read_to_string(&config_path) {
+            //                     let new_config = crate::commands::modify_slssteam_config_section(
+            //                         &content, "AppTokens", &app_id_clone, token
+            //                     );
+            //                     if std::fs::write(&config_path, &new_config).is_ok() {
+            //                         eprintln!("[AppToken] Added token for {} to local config", app_id_clone);
+            //                     }
+            //                 }
+            //             }
+            //         }
+            //     } else {
+            //         // Remote: update via SSH
+            //         use std::net::TcpStream;
+            //         use std::time::Duration;
+            //         use std::io::Read;
+            //         
+            //         let addr = format!("{}:{}", ssh_config.ip, ssh_config.port);
+            //         if let Ok(tcp) = TcpStream::connect_timeout(&addr.parse().unwrap(), Duration::from_secs(10)) {
+            //             if let Ok(mut sess) = ssh2::Session::new() {
+            //                 sess.set_tcp_stream(tcp);
+            //                 if sess.handshake().is_ok() && sess.userauth_password(&ssh_config.username, &ssh_config.password).is_ok() {
+            //                     let mut content = String::new();
+            //                     if let Ok(mut channel) = sess.channel_session() {
+            //                         if channel.exec("cat ~/.config/SLSsteam/config.yaml 2>/dev/null || echo ''").is_ok() {
+            //                             let _ = channel.read_to_string(&mut content);
+            //                             let _ = channel.wait_close();
+            //                         }
+            //                     }
+            //                     
+            //                     let new_config = crate::commands::modify_slssteam_config_section(
+            //                         &content, "AppTokens", &app_id_clone, token
+            //                     );
+            //                     
+            //                     if let Ok(mut channel) = sess.channel_session() {
+            //                         if channel.exec("cat > ~/.config/SLSsteam/config.yaml").is_ok() {
+            //                             let _ = channel.write_all(new_config.as_bytes());
+            //                             let _ = channel.send_eof();
+            //                             let _ = channel.wait_close();
+            //                             eprintln!("[AppToken] Added token for {} on remote", app_id_clone);
+            //                         }
+            //                     }
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
+            let _ = app_token_clone; // Suppress unused variable warning
 
             // ========================================
             // PHASE 6: CREATE STEAM ACF MANIFEST
