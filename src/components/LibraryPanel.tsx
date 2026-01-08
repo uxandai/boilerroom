@@ -3,12 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, Trash2, FolderOpen, AlertCircle, Loader2, Search, Upload } from "lucide-react";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { RefreshCw, AlertCircle, Loader2 } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { listInstalledGames, listInstalledGamesLocal, fetchSteamGridDbArtwork, type InstalledGame } from "@/lib/api";
-import { formatSize } from "@/lib/utils";
 import { CopyToRemoteModal } from "@/components/CopyToRemoteModal";
 import { GameCardModal } from "@/components/GameCardModal";
+import { LibraryGameItem } from "@/components/LibraryGameItem";
 
 export function LibraryPanel() {
   const { sshConfig, addLog, connectionStatus, connectionMode, setSearchQuery, settings, setActiveTab, setTriggerSearch, libraryNeedsRefresh } = useAppStore();
@@ -174,6 +174,45 @@ export function LibraryPanel() {
     }
   }, [connectionStatus, connectionMode]);
 
+  // Item handlers
+  const handleSelect = useCallback((game: InstalledGame) => {
+    setSelectedGameForCard(game);
+  }, []);
+
+  const handleSearch = useCallback((game: InstalledGame) => {
+    setSearchQuery(game.app_id !== "unknown" ? game.app_id : game.name);
+    setActiveTab("search");
+    setTriggerSearch(true);
+  }, [setSearchQuery, setActiveTab, setTriggerSearch]);
+
+  const handleCopyToRemote = useCallback((game: InstalledGame) => {
+    setCopyToRemoteGame(game);
+  }, []);
+
+  const handleUninstall = useCallback(async (game: InstalledGame) => {
+    if (!confirm(`Are you sure you want to uninstall ${game.name}?`)) return;
+    try {
+      const { uninstallGame } = await import("@/lib/api");
+      // Use correct config based on connection mode
+      const configForUninstall = { ...sshConfig };
+      if (connectionMode === "local") {
+        configForUninstall.is_local = true;
+      }
+      await uninstallGame(configForUninstall, game.path, game.app_id);
+      addLog("info", `Uninstalled: ${game.name}`);
+      refreshGames(); // Refresh list
+    } catch (e) {
+      addLog("error", `Uninstall error: ${e}`);
+    }
+  }, [sshConfig, connectionMode, addLog, refreshGames]);
+
+  // Memoize sorted and filtered games
+  const sortedGames = useMemo(() => {
+    return [...games]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .filter(game => !showOnlyTonTonDeck || game.has_depotdownloader_marker);
+  }, [games, showOnlyTonTonDeck]);
+
   return (
     <div className="space-y-6">
       <Card className="bg-[#1b2838] border-[#2a475e]">
@@ -237,92 +276,18 @@ export function LibraryPanel() {
 
           {games.length > 0 && (
             <div className="space-y-2">
-              {[...games]
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .filter(game => !showOnlyTonTonDeck || game.has_depotdownloader_marker)
-                .map((game) => (
-                  <div
-                    key={game.app_id !== "unknown" ? game.app_id : game.path}
-                    className="bg-[#171a21] border border-[#0a0a0a] p-3 flex items-center justify-between hover:bg-[#1b2838] transition-colors cursor-pointer"
-                    onClick={() => setSelectedGameForCard(game)}
-                  >
-                    <div className="flex items-center gap-4">
-                      {artworkMap.get(game.app_id) || game.header_image ? (
-                        <img
-                          src={artworkMap.get(game.app_id) || game.header_image}
-                          alt={game.name}
-                          className="w-24 h-9 object-cover rounded"
-                        />
-                      ) : (
-                        <div className="w-24 h-9 bg-[#2a475e] rounded flex items-center justify-center">
-                          <FolderOpen className="w-4 h-4 text-muted-foreground" />
-                        </div>
-                      )}
-                      <div>
-                        <p className="font-medium text-white">{game.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          AppID: {game.app_id} • {formatSize(game.size_bytes)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-[#67c1f5] hover:text-[#8ed0f8] hover:bg-[#2a475e]"
-                        title="Search for updates"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSearchQuery(game.app_id !== "unknown" ? game.app_id : game.name);
-                          setActiveTab("search");
-                          setTriggerSearch(true);
-                        }}
-                      >
-                        <Search className="w-4 h-4" />
-                      </Button>
-                      {/* Copy to Remote - only in local mode */}
-                      {connectionMode === "local" && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-green-400 hover:text-green-300 hover:bg-green-900/20"
-                          title="Copy to Steam Deck"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setCopyToRemoteGame(game);
-                          }}
-                        >
-                          <Upload className="w-4 h-4" />
-                        </Button>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
-                        title="Uninstall"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (!confirm(`Are you sure you want to uninstall ${game.name}?`)) return;
-                          try {
-                            const { uninstallGame } = await import("@/lib/api");
-                            // Use correct config based on connection mode
-                            const configForUninstall = { ...sshConfig };
-                            if (connectionMode === "local") {
-                              configForUninstall.is_local = true;
-                            }
-                            await uninstallGame(configForUninstall, game.path, game.app_id);
-                            addLog("info", `Uninstalled: ${game.name}`);
-                            refreshGames(); // Refresh list
-                          } catch (e) {
-                            addLog("error", `Uninstall error: ${e}`);
-                          }
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+              {sortedGames.map((game) => (
+                <LibraryGameItem
+                  key={game.app_id !== "unknown" ? game.app_id : game.path}
+                  game={game}
+                  artworkUrl={artworkMap.get(game.app_id)}
+                  connectionMode={connectionMode}
+                  onSelect={handleSelect}
+                  onSearch={handleSearch}
+                  onCopyToRemote={handleCopyToRemote}
+                  onUninstall={handleUninstall}
+                />
+              ))}
             </div>
           )}
         </CardContent>
