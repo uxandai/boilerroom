@@ -31,6 +31,7 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
   }
+
   .dark {
     --background: 0 0% 3.9%;
     --foreground: 0 0% 98%;
@@ -63,6 +64,7 @@
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground;
     font-family: "Motiva Sans", Arial, Helvetica, sans-serif;
@@ -131,6 +133,17 @@
   background: hsl(220 15% 35%);
 }
 
+/* GPU acceleration for smooth scrolling */
+[data-radix-scroll-area-viewport],
+.overflow-y-auto,
+.overflow-auto {
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  will-change: scroll-position;
+}
+
 /* Game card hover effect */
 .game-card {
   transition: transform 0.2s, box-shadow 0.2s;
@@ -160,13 +173,17 @@
 }
 
 /* Steam-like input fields */
-input, select, textarea {
+input,
+select,
+textarea {
   background: rgba(0, 0, 0, 0.2) !important;
   border: 1px solid rgba(0, 0, 0, 0.3) !important;
   color: #acb2b8 !important;
 }
 
-input:focus, select:focus, textarea:focus {
+input:focus,
+select:focus,
+textarea:focus {
   border-color: #67c1f5 !important;
   outline: none;
 }
@@ -177,6 +194,7 @@ input:focus, select:focus, textarea:focus {
     opacity: 0;
     transform: translate(-50%, -45%) scale(0.96);
   }
+
   to {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
@@ -188,6 +206,7 @@ input:focus, select:focus, textarea:focus {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
   }
+
   to {
     opacity: 0;
     transform: translate(-50%, -45%) scale(0.96);
@@ -207,20 +226,19 @@ input:focus, select:focus, textarea:focus {
   0% {
     background-position: 200% 0;
   }
+
   100% {
     background-position: -200% 0;
   }
 }
 
 .progress-shimmer {
-  background: linear-gradient(
-    90deg,
-    #67c1f5 0%,
-    #8ed0f8 25%,
-    #67c1f5 50%,
-    #417a9b 75%,
-    #67c1f5 100%
-  );
+  background: linear-gradient(90deg,
+      #67c1f5 0%,
+      #8ed0f8 25%,
+      #67c1f5 50%,
+      #417a9b 75%,
+      #67c1f5 100%);
   background-size: 200% 100%;
   animation: progress-shimmer 2s linear infinite;
 }

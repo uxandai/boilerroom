@@ -24,7 +24,8 @@ pub fn run() {
         // Check if SteamOS specifically (Steam Deck Gaming Mode has known WebKit issues)
         let is_steamos = std::path::Path::new("/etc/steamos-release").exists();
 
-        // Apply WebKit fixes for Wayland (DMABUF renderer causes protocol errors)
+        // Apply WebKit fixes for Wayland
+        // DMABUF renderer causes protocol errors on many Wayland setups
         if is_wayland {
             eprintln!(
                 "[Tauri] Wayland detected, disabling DMABUF renderer for WebKit compatibility"

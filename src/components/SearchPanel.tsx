@@ -4,7 +4,7 @@ import { searchBundles } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { Search, Download, Loader2, Package, AlertTriangle, FolderUp } from "lucide-react";
 import { InstallModal } from "@/components/InstallModal";
 import { SlssteamStatusBanner } from "@/components/SlssteamStatusBanner";
@@ -91,7 +91,7 @@ export function SearchPanel() {
       const errorMsg = String(error);
       addLog("error", `Search failed: ${errorMsg}`);
       setSearchResults([]);
-      
+
       // Show alert if API key expired
       if (errorMsg.includes("expired") || errorMsg.includes("invalid") || errorMsg.includes("401")) {
         setShowApiKeyAlert(true);
@@ -113,27 +113,27 @@ export function SearchPanel() {
     try {
       setIsUploadingManifest(true);
       addLog("info", "Opening file picker for manifest ZIP...");
-      
+
       const { open } = await import("@tauri-apps/plugin-dialog");
       const selected = await open({
         multiple: false,
         filters: [{ name: "Manifest ZIP", extensions: ["zip"] }],
         title: "Select manifest .zip",
       });
-      
+
       if (!selected) {
         addLog("info", "File picker cancelled");
         return;
       }
-      
+
       const zipPath = typeof selected === "string" ? selected : selected[0];
       addLog("info", `Processing manifest: ${zipPath}`);
-      
+
       const { extractManifestZip } = await import("@/lib/api");
       const gameData = await extractManifestZip(zipPath);
-      
+
       addLog("info", `Extracted manifest for: ${gameData.game_name} (${gameData.app_id})`);
-      
+
       // Create minimal SearchResult for InstallModal
       // InstallModal will use the game_id to load depots via its own flow
       const searchResult: SearchResult = {
@@ -142,12 +142,12 @@ export function SearchPanel() {
         manifest_available: true,
         header_image: `https://cdn.cloudflare.steamstatic.com/steam/apps/${gameData.app_id}/header.jpg`,
       };
-      
+
       // Open InstallModal with the uploaded manifest data
       setSelectedGame(searchResult);
       setUploadedZipPath(zipPath); // Pass the zip path so InstallModal skips downloadBundle
       setInstallModalOpen(true);
-      
+
     } catch (error) {
       addLog("error", `Failed to process manifest: ${error}`);
     } finally {
@@ -158,7 +158,7 @@ export function SearchPanel() {
   // Start installation
   const handleInstall = (gameId: string) => {
     addLog("info", `[DEBUG] handleInstall called for ${gameId}, connectionMode=${connectionMode}, connectionStatus=${connectionStatus}`);
-    
+
     // LOCAL mode doesn't require SSH connection
     if (connectionMode !== "local" && connectionStatus !== "ssh_ok") {
       addLog("error", "Cannot install: SSH connection not established. Configure in Settings or switch to Local mode.");
@@ -168,7 +168,7 @@ export function SearchPanel() {
     // Find the result object to get details
     const result = searchResults.find(r => r.game_id === gameId);
     if (!result) return;
-    
+
     addLog("info", `[DEBUG] Opening InstallModal for ${result.game_name}`);
     // Open install modal with selected game
     setSelectedGame(result);
@@ -224,8 +224,8 @@ export function SearchPanel() {
                 </>
               )}
             </Button>
-            <Button 
-              onClick={handleSearch} 
+            <Button
+              onClick={handleSearch}
               disabled={isSearching || !localQuery.trim()}
               className="btn-steam px-6"
             >
@@ -249,7 +249,7 @@ export function SearchPanel() {
       </Card>
 
       {/* Results */}
-      <ScrollArea className="h-[calc(100vh-220px)]">
+      <div>
         {searchResults.length === 0 ? (
           <div className="flex items-center justify-center h-64 text-muted-foreground">
             {isSearching ? (
@@ -262,11 +262,12 @@ export function SearchPanel() {
             )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" style={{ contentVisibility: 'auto' }}>
             {searchResults.map((result) => (
               <Card
                 key={result.game_id}
                 className="game-card bg-[#1b2838] border-[#0a0a0a] overflow-hidden"
+                style={{ contain: 'layout style paint' }}
               >
                 {/* Game header image */}
                 <div className="relative">
@@ -274,6 +275,8 @@ export function SearchPanel() {
                     src={getHeaderImageUrl(result.game_id)}
                     alt={result.game_name}
                     className="w-full steam-header-image bg-[#0a0a0a]"
+                    loading="lazy"
+                    decoding="async"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='460' height='215' viewBox='0 0 460 215'%3E%3Crect fill='%231b2838' width='460' height='215'/%3E%3Ctext x='230' y='107' fill='%23666' font-family='Arial' font-size='14' text-anchor='middle'%3ENo Image%3C/text%3E%3C/svg%3E";
                     }}
@@ -284,7 +287,7 @@ export function SearchPanel() {
                     </div>
                   )}
                 </div>
-                
+
                 <CardContent className="p-3">
                   <h3 className="font-medium text-white truncate mb-1" title={result.game_name}>
                     {result.game_name}
@@ -311,7 +314,7 @@ export function SearchPanel() {
             ))}
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* Install Modal */}
       <InstallModal
@@ -333,12 +336,12 @@ export function SearchPanel() {
               API Key Expired
             </AlertDialogTitle>
             <AlertDialogDescription className="text-gray-400">
-              Your Morrenus API key has expired or is invalid. 
+              Your Morrenus API key has expired or is invalid.
               Generate a new key and paste it in Settings.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={() => {
                 setShowApiKeyAlert(false);
                 useAppStore.getState().setActiveTab("settings");

@@ -173,7 +173,7 @@ function App() {
 
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="h-screen flex flex-col bg-background text-foreground overflow-hidden">
       {/* Header - draggable for window movement */}
       <header data-tauri-drag-region className="bg-[#171a21] border-b border-[#0a0a0a] px-4 py-3 select-none cursor-move">
         <div className="flex items-center justify-between pointer-events-none">
@@ -191,9 +191,9 @@ function App() {
       <InstallProgress />
 
       {/* Main Content */}
-      <div className="px-4">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="w-full justify-start bg-transparent border-b border-[#2a475e] p-0 h-auto gap-0 rounded-none mb-0">
+      <div className="flex-1 flex flex-col min-h-0 px-4 pb-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
+          <TabsList className="w-full justify-start bg-transparent border-b border-[#2a475e] p-0 h-auto gap-0 rounded-none mb-0 shrink-0">
             <TabsTrigger
               value="search"
               className="px-6 py-3 text-sm font-bold uppercase tracking-wide rounded-none border-b-2 border-transparent data-[state=active]:border-[#67c1f5] data-[state=active]:text-[#67c1f5] data-[state=active]:bg-transparent text-gray-400 hover:text-white bg-transparent"
@@ -230,19 +230,19 @@ function App() {
             </button>
           </TabsList>
 
-          <TabsContent value="search" className="mt-4">
+          <TabsContent value="search" className="flex-1 mt-4 overflow-y-auto">
             <SearchPanel />
           </TabsContent>
 
-          <TabsContent value="settings" className="mt-4">
+          <TabsContent value="settings" className="flex-1 mt-4 overflow-y-auto">
             <SettingsPanel />
           </TabsContent>
 
-          <TabsContent value="logs" className="mt-4">
+          <TabsContent value="logs" className="flex-1 mt-4 overflow-y-auto">
             <LogsPanel />
           </TabsContent>
 
-          <TabsContent value="library" className="mt-4">
+          <TabsContent value="library" className="flex-1 mt-4 overflow-y-auto">
             <LibraryPanel />
           </TabsContent>
         </Tabs>

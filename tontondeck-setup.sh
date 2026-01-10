@@ -281,9 +281,6 @@ AdditionalApps:
 #when the App you're playing is hit by Steams 64 DLC limit
 DlcData:
 
-#Used to retrieve ProductInfo from Steam servers for some games
-#AppTokens:
-
 #Fake Steam being offline for specified AppIds. Same format as AppIds
 FakeOffline:
 
