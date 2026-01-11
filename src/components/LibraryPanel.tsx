@@ -10,6 +10,17 @@ import { formatSize } from "@/lib/utils";
 import { CopyToRemoteModal } from "@/components/CopyToRemoteModal";
 import { GameCardModal } from "@/components/GameCardModal";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
 export function LibraryPanel() {
   const { sshConfig, addLog, connectionStatus, connectionMode, setSearchQuery, settings, setActiveTab, setTriggerSearch, libraryNeedsRefresh } = useAppStore();
   const [games, setGames] = useState<InstalledGame[]>([]);
@@ -25,6 +36,8 @@ export function LibraryPanel() {
   const [copyToRemoteGame, setCopyToRemoteGame] = useState<InstalledGame | null>(null);
   // State for Game Card modal
   const [selectedGameForCard, setSelectedGameForCard] = useState<InstalledGame | null>(null);
+  // State for delete confirmation
+  const [gameToDelete, setGameToDelete] = useState<InstalledGame | null>(null);
 
   // Refs for preventing duplicate refreshes
   const isRefreshingRef = useRef(false);
@@ -174,6 +187,28 @@ export function LibraryPanel() {
     }
   }, [connectionStatus, connectionMode]);
 
+  const handleUninstall = async () => {
+    if (!gameToDelete) return;
+
+    // Create local reference and clear state immediately to close modal
+    const game = gameToDelete;
+    setGameToDelete(null);
+
+    try {
+      const { uninstallGame } = await import("@/lib/api");
+      // Use correct config based on connection mode
+      const configForUninstall = { ...sshConfig };
+      if (connectionMode === "local") {
+        configForUninstall.is_local = true;
+      }
+      await uninstallGame(configForUninstall, game.path, game.app_id);
+      addLog("info", `Uninstalled: ${game.name}`);
+      refreshGames(); // Refresh list
+    } catch (e) {
+      addLog("error", `Uninstall error: ${e}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <Card className="bg-[#1b2838] border-[#2a475e]">
@@ -300,22 +335,9 @@ export function LibraryPanel() {
                         size="sm"
                         className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
                         title="Uninstall"
-                        onClick={async (e) => {
+                        onClick={(e) => {
                           e.stopPropagation();
-                          if (!confirm(`Are you sure you want to uninstall ${game.name}?`)) return;
-                          try {
-                            const { uninstallGame } = await import("@/lib/api");
-                            // Use correct config based on connection mode
-                            const configForUninstall = { ...sshConfig };
-                            if (connectionMode === "local") {
-                              configForUninstall.is_local = true;
-                            }
-                            await uninstallGame(configForUninstall, game.path, game.app_id);
-                            addLog("info", `Uninstalled: ${game.name}`);
-                            refreshGames(); // Refresh list
-                          } catch (e) {
-                            addLog("error", `Uninstall error: ${e}`);
-                          }
+                          setGameToDelete(game);
                         }}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -342,6 +364,31 @@ export function LibraryPanel() {
         game={selectedGameForCard}
         onGameRemoved={refreshGames}
       />
+
+      {/* Uninstall Confirmation Dialog */}
+      <AlertDialog open={gameToDelete !== null} onOpenChange={(open) => !open && setGameToDelete(null)}>
+        <AlertDialogContent className="bg-[#1b2838] border-[#2a475e]">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-white">Uninstall Game?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-400">
+              Are you sure you want to uninstall <span className="text-white font-medium">{gameToDelete?.name}</span>?
+              <br />
+              This will remove the game files from your library.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-[#2a475e] border-[#2a475e] text-white hover:bg-[#3a5a7e]">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleUninstall}
+              className="bg-red-600 text-white hover:bg-red-500"
+            >
+              Uninstall
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

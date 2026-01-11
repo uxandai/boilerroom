@@ -228,27 +228,52 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
   const handleInstall = async () => {
     if (!game || selectedCount === 0 || !selectedLibrary) return;
 
+    // Check if install is in progress
+    const { installProgress, addToQueue } = useAppStore.getState();
+    const isBusy = installProgress && installProgress.step !== "finished" && installProgress.step !== "error" && installProgress.step !== "cancelled" && installProgress.step !== "idle";
+
+    // Prepare install parameters
+    const selectedDepotsFiltered = depots.filter(d => d.selected);
+    const selectedDepotIds = selectedDepotsFiltered.map(d => d.depot_id);
+    const selectedManifestIds = selectedDepotsFiltered.map(d => d.manifest_id);
+    const selectedManifestFiles = selectedDepotsFiltered.map(d => d.manifest_path);
+    const selectedDepotKeys: [string, string][] = selectedDepotsFiltered.map(d => [d.depot_id, d.key]);
+
+    if (selectedDepotIds.length === 0) return;
+
+    const targetPath = `${selectedLibrary}/steamapps/common`;
+
+    // Inject is_local flag if needed
+    const configToUse = { ...sshConfig };
+    const { connectionMode } = useAppStore.getState();
+    if (connectionMode === "local") {
+      configToUse.is_local = true;
+    }
+
+    if (isBusy) {
+      // Queue the install
+      addLog("info", `Queueing installation of ${game.game_name}`);
+      addToQueue({
+        game: game,
+        depotIds: selectedDepotIds,
+        manifestIds: selectedManifestIds,
+        manifestFiles: selectedManifestFiles,
+        depotKeys: selectedDepotKeys,
+        targetPath: targetPath,
+        config: configToUse,
+        depotDownloaderPath: settings.depotDownloaderPath,
+        steamlessPath: settings.steamlessPath,
+        appToken: appToken
+      });
+
+      onClose();
+      return;
+    }
+
     setIsInstalling(true);
     addLog("info", `Starting installation of ${game.game_name} to ${selectedLibrary}`);
 
     try {
-      const selectedDepotsFiltered = depots.filter(d => d.selected);
-      const selectedDepotIds = selectedDepotsFiltered.map(d => d.depot_id);
-      const selectedManifestIds = selectedDepotsFiltered.map(d => d.manifest_id);
-      const selectedManifestFiles = selectedDepotsFiltered.map(d => d.manifest_path);
-      const selectedDepotKeys: [string, string][] = selectedDepotsFiltered.map(d => [d.depot_id, d.key]);
-
-      if (selectedDepotIds.length === 0) return;
-
-      const targetPath = `${selectedLibrary}/steamapps/common`;
-
-      // Inject is_local flag if needed
-      const configToUse = { ...sshConfig };
-      const { connectionMode } = useAppStore.getState();
-      if (connectionMode === "local") {
-        configToUse.is_local = true;
-      }
-
       await startPipelinedInstall(
         game.game_id,
         game.game_name,

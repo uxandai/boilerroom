@@ -39,6 +39,7 @@ pub struct InstallManager {
     cancelled: Arc<AtomicBool>,
     paused: Arc<AtomicBool>,
     child_process: Arc<Mutex<Option<u32>>>, // Store child PID for killing
+    last_emit: Arc<Mutex<std::time::Instant>>, // Throttling
 }
 
 impl InstallManager {
@@ -60,6 +61,7 @@ impl InstallManager {
             cancelled: Arc::new(AtomicBool::new(false)),
             paused: Arc::new(AtomicBool::new(false)),
             child_process: Arc::new(Mutex::new(None)),
+            last_emit: Arc::new(Mutex::new(std::time::Instant::now())),
         }
     }
     
@@ -165,7 +167,20 @@ impl InstallManager {
         *self.child_process.lock().unwrap() = pid;
     }
 
-    fn emit_progress(&self) {
+    fn emit_progress(&self, force: bool) {
+        // Throttling: only emit if enough time passed or forced (state change)
+        if !force {
+            let mut last = self.last_emit.lock().unwrap();
+            if last.elapsed() < std::time::Duration::from_millis(100) {
+                return;
+            }
+            *last = std::time::Instant::now();
+        } else {
+            // Update timestamp even if forced, to keep spacing
+            let mut last = self.last_emit.lock().unwrap();
+            *last = std::time::Instant::now();
+        }
+
         let progress = self.progress.lock().unwrap().clone();
         let _ = self.app_handle.emit("install-progress", progress);
     }
@@ -175,14 +190,14 @@ impl InstallManager {
         p.state = state.to_string();
         p.message = msg.to_string();
         drop(p);
-        self.emit_progress();
+        self.emit_progress(true); // Always force state changes
     }
 
     fn update_download_percent(&self, percent: f64) {
         let mut p = self.progress.lock().unwrap();
         p.download_percent = percent;
         drop(p);
-        self.emit_progress();
+        self.emit_progress(false); // Throttle progress updates
     }
     
     fn update_download_speed_eta(&self, speed: &str, eta: &str) {
@@ -190,7 +205,7 @@ impl InstallManager {
         p.download_speed = speed.to_string();
         p.eta = eta.to_string();
         drop(p);
-        self.emit_progress();
+        self.emit_progress(false); // Throttle speed/eta updates
     }
 
     fn update_transfer_progress(&self, files_done: usize, files_total: usize, speed: &str) {
@@ -204,7 +219,7 @@ impl InstallManager {
             p.download_percent = 50.0 + transfer_pct;
         }
         drop(p);
-        self.emit_progress();
+        self.emit_progress(false); // Throttle transfer updates
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -442,7 +457,7 @@ impl InstallManager {
                 let mut p = m.progress.lock().unwrap();
                 p.files_total = file_count;
             }
-            m.emit_progress();
+            m.emit_progress(true); // Force update with file count
 
             // ========================================
             // PHASE 4: TRANSFER (only for REMOTE mode)

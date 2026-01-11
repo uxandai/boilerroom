@@ -338,6 +338,63 @@ export function InstallProgress() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Queue Display */}
+      <QueueDisplay />
+    </div>
+  );
+}
+
+function QueueDisplay() {
+  const { installQueue, removeFromQueue } = useAppStore();
+
+  if (installQueue.length === 0) return null;
+
+  return (
+    <div className="relative bg-[#171a21] border-t border-[#0a0a0a] px-4 py-3 z-10">
+      <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase flex items-center gap-2">
+        <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+        Up Next in Queue ({installQueue.length})
+      </h3>
+      <div className="space-y-1">
+        {installQueue.map((item, index) => (
+          <div key={item.game.game_id} className="flex items-center gap-3 p-2 rounded bg-[#0a0a0a] border border-[#2a475e]/30 hover:border-[#67c1f5]/30 transition-colors group">
+            <span className="text-gray-500 font-mono text-xs w-6 text-center">{index + 1}</span>
+
+            {/* Cover Art with Fallback */}
+            <div className="h-8 w-16 relative bg-gray-800 rounded overflow-hidden flex-shrink-0">
+              <img
+                src={`https://cdn.akamai.steamstatic.com/steam/apps/${item.game.game_id}/header.jpg`}
+                alt={item.game.game_name}
+                className="h-full w-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.parentElement?.classList.add('flex', 'items-center', 'justify-center');
+                }}
+              />
+              <div className="hidden absolute inset-0 items-center justify-center">
+                <span className="text-xs text-gray-500">?</span>
+              </div>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="text-sm text-gray-200 truncate font-medium group-hover:text-white transition-colors">{item.game.game_name}</div>
+              <div className="text-xs text-gray-400 truncate flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-600"></span>
+                Waiting for install...
+              </div>
+            </div>
+
+            <button
+              onClick={() => removeFromQueue(item.game.game_id)}
+              className="p-1.5 rounded hover:bg-red-900/40 text-gray-500 hover:text-red-400 transition-colors"
+              title="Remove from queue"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

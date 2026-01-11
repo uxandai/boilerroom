@@ -62,6 +62,19 @@ export interface Settings {
   useGistKey?: boolean; // Whether to use shared API key from Gist
 }
 
+export interface QueueItem {
+  game: SearchResult;
+  depotIds: string[];
+  manifestIds: string[];
+  manifestFiles: string[];
+  depotKeys: [string, string][];
+  targetPath: string;
+  config: SshConfig; // Config needed for this specific install
+  depotDownloaderPath: string;
+  steamlessPath: string;
+  appToken?: string;
+}
+
 interface AppState {
   // Connection
   sshConfig: SshConfig;
@@ -88,6 +101,12 @@ interface AppState {
 
   // Settings
   settings: Settings;
+
+  // Queue
+  installQueue: QueueItem[];
+  addToQueue: (item: QueueItem) => void;
+  removeFromQueue: (appId: string) => void;
+  popQueue: () => QueueItem | undefined;
 
   // Actions
   setSshConfig: (config: Partial<SshConfig>) => void;
@@ -128,7 +147,7 @@ const defaultSettings: Settings = {
   useGistKey: false,
 };
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   // Initial state
   sshConfig: defaultSshConfig,
   connectionStatus: "offline",
@@ -180,4 +199,15 @@ export const useAppStore = create<AppState>((set) => ({
     set((state) => ({
       settings: { ...state.settings, ...settings },
     })),
+
+  installQueue: [],
+  addToQueue: (item) => set((state) => ({ installQueue: [...state.installQueue, item] })),
+  removeFromQueue: (appId) => set((state) => ({ installQueue: state.installQueue.filter(i => i.game.game_id !== appId) })),
+  popQueue: () => {
+    const state = get();
+    if (state.installQueue.length === 0) return undefined;
+    const item = state.installQueue[0];
+    set({ installQueue: state.installQueue.slice(1) });
+    return item;
+  },
 }));

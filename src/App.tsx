@@ -136,6 +136,52 @@ function App() {
           message: payload.message,
           error: payload.state === "error" ? payload.message : undefined,
         });
+
+        // Trigger next queued item if current finished
+        if (payload.state === "finished") {
+          const { installQueue, popQueue } = useAppStore.getState();
+          if (installQueue.length > 0) {
+            const nextItem = popQueue();
+            if (nextItem) {
+              addLog("info", `Starting queued install: ${nextItem.game.game_name}`);
+
+              // Helper to start install - dynamically imported to avoid circular dependencies
+              import("@/lib/api").then(({ startPipelinedInstall }) => {
+                startPipelinedInstall(
+                  nextItem.game.game_id,
+                  nextItem.game.game_name,
+                  nextItem.depotIds,
+                  nextItem.manifestIds,
+                  nextItem.manifestFiles,
+                  nextItem.depotKeys,
+                  nextItem.depotDownloaderPath,
+                  nextItem.steamlessPath,
+                  nextItem.config,
+                  nextItem.targetPath,
+                  nextItem.appToken
+                ).catch(e => {
+                  addLog("error", `Failed to start queued install: ${e}`);
+                });
+
+                useAppStore.getState().setInstallProgress({
+                  step: "downloading",
+                  appId: nextItem.game.game_id,
+                  gameName: nextItem.game.game_name,
+                  heroImage: `https://cdn.akamai.steamstatic.com/steam/apps/${nextItem.game.game_id}/library_hero.jpg`,
+                  downloadPercent: 0,
+                  downloadSpeed: "",
+                  eta: "calculating...",
+                  filesTotal: 0,
+                  filesTransferred: 0,
+                  bytesTotal: 0,
+                  bytesTransferred: 0,
+                  transferSpeed: "",
+                  message: "Initializing..."
+                });
+              });
+            }
+          }
+        }
       }).then(fn => {
         if (isMounted) {
           unlistenFn = fn;
