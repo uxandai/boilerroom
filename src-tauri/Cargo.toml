@@ -38,3 +38,5 @@ crossbeam-channel = "0.5"
 dirs = "6.0.0"
 sevenz-rust = "0.6.1"
 shellexpand = "3"
+keyvalues-serde = "0.2"  # Type-safe VDF (de)serialization
+keyvalues-parser = "0.2" # Low-level VDF parsing

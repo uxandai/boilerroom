@@ -93,7 +93,97 @@ echo "Steam updates disabled."
 "#;
 
     let output = ssh_exec(&sess, cmd)?;
-    Ok(format!("Steam updates disabled on remote.\n\n{}", output.trim()))
+    Ok(format!(
+        "Steam updates disabled on remote.\n\n{}",
+        output.trim()
+    ))
+}
+
+/// Enable Steam updates (remove blocking config)
+#[tauri::command]
+pub async fn enable_steam_updates(config: SshConfig) -> Result<String, String> {
+    if config.is_local || config.ip.is_empty() {
+        let home = std::env::var("HOME")
+            .map_err(|_| "Could not get HOME environment variable".to_string())?;
+
+        let steam_dir = PathBuf::from(&home).join(".steam/steam");
+        let config_path = steam_dir.join("steam.cfg");
+
+        if !config_path.exists() {
+            return Ok("Steam updates already enabled (config not found).".to_string());
+        }
+
+        let existing_content = std::fs::read_to_string(&config_path).unwrap_or_default();
+
+        let new_content = existing_content
+            .lines()
+            .filter(|line| {
+                !line.starts_with("BootStrapperInhibitAll=")
+                    && !line.starts_with("BootStrapperForceSelfUpdate=")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        if new_content.trim().is_empty() {
+            // If empty, just remove the file
+            std::fs::remove_file(&config_path)
+                .map_err(|e| format!("Failed to remove steam.cfg: {}", e))?;
+            return Ok(format!(
+                "Steam updates enabled.\nRemoved: {}",
+                config_path.display()
+            ));
+        } else {
+            // Write back cleaned content
+            let mut final_content = new_content;
+            if !final_content.ends_with('\n') {
+                final_content.push('\n');
+            }
+            std::fs::write(&config_path, &final_content)
+                .map_err(|e| format!("Failed to update steam.cfg: {}", e))?;
+            return Ok(format!(
+                "Steam updates enabled.\nUpdated: {}",
+                config_path.display()
+            ));
+        }
+    }
+
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP address: {}", config.ip))?;
+    let addr = SocketAddr::new(ip, config.port);
+
+    let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
+        .map_err(|e| format!("Connection failed: {}", e))?;
+
+    let mut sess =
+        ssh2::Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
+
+    sess.set_tcp_stream(tcp);
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
+
+    sess.userauth_password(&config.username, &config.password)
+        .map_err(|e| format!("SSH auth failed: {}", e))?;
+
+    let cmd = r#"
+CONFIG_FILE="$HOME/.steam/steam/steam.cfg"
+if [ -f "$CONFIG_FILE" ]; then
+    sed -i '/^BootStrapperInhibitAll=/d' "$CONFIG_FILE"
+    sed -i '/^BootStrapperForceSelfUpdate=/d' "$CONFIG_FILE"
+    # If file is empty, remove it
+    if [ ! -s "$CONFIG_FILE" ]; then
+        rm "$CONFIG_FILE"
+    fi
+fi
+echo "Steam updates enabled."
+"#;
+
+    let output = ssh_exec(&sess, cmd)?;
+    Ok(format!(
+        "Steam updates enabled on remote.\n\n{}",
+        output.trim()
+    ))
 }
 
 /// Fix libcurl32 symlink issue for Steam
@@ -111,7 +201,10 @@ pub async fn fix_libcurl32(config: SshConfig) -> Result<String, String> {
         let target = target_dir.join("libcurl.so.4");
 
         if !PathBuf::from(source).exists() {
-            return Err(format!("Source library not found: {}\n\nMake sure lib32-curl is installed", source));
+            return Err(format!(
+                "Source library not found: {}\n\nMake sure lib32-curl is installed",
+                source
+            ));
         }
 
         std::fs::create_dir_all(&target_dir)
@@ -124,18 +217,27 @@ pub async fn fix_libcurl32(config: SshConfig) -> Result<String, String> {
 
         symlink(source, &target).map_err(|e| format!("Failed to create symlink: {}", e))?;
 
-        return Ok(format!("libcurl32 symlink created: {} -> {}", target.display(), source));
+        return Ok(format!(
+            "libcurl32 symlink created: {} -> {}",
+            target.display(),
+            source
+        ));
     }
 
-    let ip: IpAddr = config.ip.parse().map_err(|_| format!("Invalid IP: {}", config.ip))?;
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP: {}", config.ip))?;
     let addr = SocketAddr::new(ip, config.port);
 
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
         .map_err(|e| format!("Connection failed: {}", e))?;
 
-    let mut sess = ssh2::Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
+    let mut sess =
+        ssh2::Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
     sess.set_tcp_stream(tcp);
-    sess.handshake().map_err(|e| format!("SSH handshake failed: {}", e))?;
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
     sess.userauth_password(&config.username, &config.password)
         .map_err(|e| format!("SSH auth failed: {}", e))?;
 
@@ -149,13 +251,18 @@ mkdir -p ~/.steam/steam/ubuntu12_32
 ln -sf "{source}" ~/.steam/steam/ubuntu12_32/libcurl.so.4
 echo "Symlink created:"
 ls -la ~/.steam/steam/ubuntu12_32/libcurl.so.4
-"#, source = source);
+"#,
+        source = source
+    );
 
     let output = ssh_exec(&sess, &cmd)?;
     if output.contains("ERROR:") {
         return Err(output);
     }
-    Ok(format!("libcurl32 symlink created on remote.\n\n{}", output.trim()))
+    Ok(format!(
+        "libcurl32 symlink created on remote.\n\n{}",
+        output.trim()
+    ))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,17 +300,25 @@ pub async fn check_steam_updates_status(config: SshConfig) -> Result<SteamUpdate
         });
     }
 
-    let ip: IpAddr = config.ip.parse().map_err(|_| format!("Invalid IP: {}", config.ip))?;
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP: {}", config.ip))?;
     let addr = SocketAddr::new(ip, config.port);
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
         .map_err(|e| format!("Connection failed: {}", e))?;
-    let mut sess = ssh2::Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
+    let mut sess =
+        ssh2::Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
     sess.set_tcp_stream(tcp);
-    sess.handshake().map_err(|e| format!("SSH handshake failed: {}", e))?;
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
     sess.userauth_password(&config.username, &config.password)
         .map_err(|e| format!("SSH auth failed: {}", e))?;
 
-    let output = ssh_exec(&sess, "cat ~/.steam/steam/steam.cfg 2>/dev/null || echo 'FILE_NOT_FOUND'")?;
+    let output = ssh_exec(
+        &sess,
+        "cat ~/.steam/steam/steam.cfg 2>/dev/null || echo 'FILE_NOT_FOUND'",
+    )?;
 
     if output.contains("FILE_NOT_FOUND") {
         return Ok(SteamUpdatesStatus {
@@ -245,7 +360,7 @@ pub async fn check_libcurl32_status(config: SshConfig) -> Result<Libcurl32Status
 
         let (symlink_exists, symlink_correct) = if target_path.symlink_metadata().is_ok() {
             if let Ok(link_target) = std::fs::read_link(&target_path) {
-                (true, link_target == PathBuf::from(source))
+                (true, link_target == std::path::Path::new(source))
             } else {
                 (true, false)
             }
@@ -262,17 +377,22 @@ pub async fn check_libcurl32_status(config: SshConfig) -> Result<Libcurl32Status
         });
     }
 
-    let ip: IpAddr = config.ip.parse().map_err(|_| format!("Invalid IP: {}", config.ip))?;
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP: {}", config.ip))?;
     let addr = SocketAddr::new(ip, config.port);
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
         .map_err(|e| format!("Connection failed: {}", e))?;
     let mut sess = ssh2::Session::new().map_err(|e| format!("SSH session error: {}", e))?;
     sess.set_tcp_stream(tcp);
-    sess.handshake().map_err(|e| format!("SSH handshake failed: {}", e))?;
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
     sess.userauth_password(&config.username, &config.password)
         .map_err(|e| format!("SSH auth failed: {}", e))?;
 
-    let cmd = format!(r#"
+    let cmd = format!(
+        r#"
 SOURCE_EXISTS="false"
 SYMLINK_EXISTS="false"
 SYMLINK_CORRECT="false"
@@ -288,7 +408,9 @@ fi
 echo "SOURCE_EXISTS=$SOURCE_EXISTS"
 echo "SYMLINK_EXISTS=$SYMLINK_EXISTS"
 echo "SYMLINK_CORRECT=$SYMLINK_CORRECT"
-"#, source = source);
+"#,
+        source = source
+    );
 
     let output = ssh_exec(&sess, &cmd)?;
 
@@ -310,13 +432,16 @@ pub struct Lib32DependenciesStatus {
 }
 
 #[tauri::command]
-pub async fn check_lib32_dependencies(config: SshConfig) -> Result<Lib32DependenciesStatus, String> {
+pub async fn check_lib32_dependencies(
+    config: SshConfig,
+) -> Result<Lib32DependenciesStatus, String> {
     if config.is_local || config.ip.is_empty() {
         let lib32_curl_installed = PathBuf::from("/usr/lib32/libcurl.so.4").exists();
         let lib32_openssl_installed = PathBuf::from("/usr/lib32/libssl.so").exists()
             || PathBuf::from("/usr/lib32/libssl.so.3").exists();
         let lib32_glibc_installed = PathBuf::from("/usr/lib32/libc.so.6").exists();
-        let all_installed = lib32_curl_installed && lib32_openssl_installed && lib32_glibc_installed;
+        let all_installed =
+            lib32_curl_installed && lib32_openssl_installed && lib32_glibc_installed;
 
         return Ok(Lib32DependenciesStatus {
             lib32_curl_installed,
@@ -326,13 +451,17 @@ pub async fn check_lib32_dependencies(config: SshConfig) -> Result<Lib32Dependen
         });
     }
 
-    let ip: IpAddr = config.ip.parse().map_err(|_| format!("Invalid IP: {}", config.ip))?;
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP: {}", config.ip))?;
     let addr = SocketAddr::new(ip, config.port);
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
         .map_err(|e| format!("Connection failed: {}", e))?;
     let mut sess = ssh2::Session::new().map_err(|e| format!("SSH session error: {}", e))?;
     sess.set_tcp_stream(tcp);
-    sess.handshake().map_err(|e| format!("SSH handshake failed: {}", e))?;
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
     sess.userauth_password(&config.username, &config.password)
         .map_err(|e| format!("SSH auth failed: {}", e))?;
 

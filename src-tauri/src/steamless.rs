@@ -1,6 +1,6 @@
 //! Steamless integration with Proton/Wine discovery
 //! Ported from ACCELA's steamless_task.py
-//! 
+//!
 //! NOTE: This module is kept for future reference but not currently used.
 //! The GUI version of Steamless is now launched via Wine from Settings.
 
@@ -303,7 +303,7 @@ where
     // Read output for progress
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             eprintln!("[winetricks] {}", line);
             if line.contains("Executing")
                 || line.contains("Installing")
@@ -408,7 +408,7 @@ where
 
     if let Some(stdout) = child.stdout.take() {
         let reader = BufReader::new(stdout);
-        for line in reader.lines().flatten() {
+        for line in reader.lines().map_while(Result::ok) {
             let line_lower = line.to_lowercase();
             eprintln!("[Steamless] {}", line);
 

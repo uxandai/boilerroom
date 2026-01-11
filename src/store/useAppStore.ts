@@ -78,6 +78,7 @@ interface AppState {
 
   // UI State
   activeTab: string;
+  setupWizardOpen: boolean; // Setup wizard modal visibility
 
   // Installation
   installProgress: InstallProgress | null;
@@ -99,6 +100,7 @@ interface AppState {
   setTriggerSearch: (trigger: boolean) => void;
   triggerLibraryRefresh: () => void;
   setActiveTab: (tab: string) => void;
+  setSetupWizardOpen: (open: boolean) => void;
   setInstallProgress: (progress: InstallProgress | null) => void;
   addLog: (level: LogEntry["level"], message: string) => void;
   clearLogs: () => void;
@@ -139,6 +141,7 @@ export const useAppStore = create<AppState>((set) => ({
   triggerSearch: false,
   libraryNeedsRefresh: false,
   activeTab: "search",
+  setupWizardOpen: false,
   installProgress: null,
   logs: [],
   settings: { ...defaultSettings },
@@ -155,6 +158,7 @@ export const useAppStore = create<AppState>((set) => ({
   triggerLibraryRefresh: () => set({ libraryNeedsRefresh: true }),
 
   setActiveTab: (tab) => set({ activeTab: tab }),
+  setSetupWizardOpen: (open) => set({ setupWizardOpen: open }),
 
   setSearchResults: (results) => set({ searchResults: results }),
 

@@ -207,15 +207,16 @@ impl InstallManager {
         self.emit_progress();
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn start_pipeline(
         &self,
         app_id: String,
         game_name: String,
         depots: Vec<DepotDownloadArg>,
         keys_file: PathBuf,
-        depot_keys: Vec<(String, String)>, // (depot_id, key) pairs for config.vdf
+        depot_keys: Vec<(String, String)>,
         depot_downloader_path: String,
-        _steamless_path: String, 
+        _steamless_path: String,
         ssh_config: SshConfig,
         target_directory: String,
         app_token: Option<String>, // Optional app token from LUA addtoken()
@@ -267,6 +268,7 @@ impl InstallManager {
             let percent_re = Regex::new(r"(\d{1,3}(?:\.\d{1,2})?)%").unwrap();
             let total_depots = depots.len();
             
+            let speed_re = Regex::new(r"(\d+\.?\d*)\s*(KB|MB|GB)/s").unwrap();
             for (depot_idx, depot) in depots.iter().enumerate() {
                 // Check for cancellation before each depot
                 if m.is_cancelled() {
@@ -304,11 +306,9 @@ impl InstallManager {
                 // Parse stdout for progress
                 if let Some(stdout) = child.stdout.take() {
                     let reader = BufReader::new(stdout);
-                    // Regex to parse speed from lines like "Downloading: 12.5 MB/s"
-                    let speed_re = Regex::new(r"(\d+\.?\d*)\s*(KB|MB|GB)/s").unwrap();
                     let start_time = std::time::Instant::now();
                     
-                    for line in reader.lines().flatten() {
+                    for line in reader.lines().map_while(Result::ok) {
                         // Check for cancellation while reading
                         if m.is_cancelled() {
                             eprintln!("[DDMod] Cancellation detected during download");
@@ -500,7 +500,7 @@ impl InstallManager {
                         // Parse version like "rsync  version 3.2.7  protocol version 31"
                         if let Some(ver_line) = version_str.lines().next() {
                             if let Some(ver_part) = ver_line.split("version").nth(1) {
-                                let ver_num = ver_part.trim().split_whitespace().next().unwrap_or("");
+                                let ver_num = ver_part.split_whitespace().next().unwrap_or("");
                                 let parts: Vec<&str> = ver_num.split('.').collect();
                                 if parts.len() >= 2 {
                                     let major = parts[0].parse::<u32>().unwrap_or(0);
@@ -571,7 +571,7 @@ impl InstallManager {
                             let mut stderr_output = String::new();
                             if let Some(stderr) = stderr {
                                 let reader = BufReader::new(stderr);
-                                for line in reader.lines().flatten() {
+                                for line in reader.lines().map_while(Result::ok) {
                                     eprintln!("[rsync stderr] {}", line);
                                     stderr_output.push_str(&line);
                                     stderr_output.push('\n');

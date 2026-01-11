@@ -1,10 +1,9 @@
 //! Morrenus API, SteamGridDB, and artwork caching commands
 
+// use reqwest::Client; // Unused (used fully qualified)
 use serde::{Deserialize, Serialize};
-use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
-use tauri::Emitter;
 
 // Search result from Morrenus API
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,7 +73,7 @@ pub async fn check_morrenus_api_status(api_key: String) -> Result<MorrenusApiSta
 
     // Get user stats
     let stats_response = client
-        .get(&format!(
+        .get(format!(
             "https://manifest.morrenus.xyz/api/v1/user/stats?api_key={}",
             api_key
         ))

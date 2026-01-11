@@ -134,30 +134,48 @@ pub async fn verify_slssteam(config: SshConfig) -> Result<SlssteamStatus, String
         return Err("IP address is required".to_string());
     }
 
-    let ip: IpAddr = config.ip.parse().map_err(|_| format!("Invalid IP: {}", config.ip))?;
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP: {}", config.ip))?;
     let addr = SocketAddr::new(ip, config.port);
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
         .map_err(|e| format!("Connection failed: {}", e))?;
 
     let mut sess = ssh2::Session::new().map_err(|e| format!("SSH session error: {}", e))?;
     sess.set_tcp_stream(tcp);
-    sess.handshake().map_err(|e| format!("SSH handshake failed: {}", e))?;
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
     sess.userauth_password(&config.username, &config.password)
         .map_err(|e| format!("SSH auth failed: {}", e))?;
 
-    let readonly_out = ssh_exec(&sess, "steamos-readonly status 2>/dev/null || echo 'not-steamos'")?;
+    let readonly_out = ssh_exec(
+        &sess,
+        "steamos-readonly status 2>/dev/null || echo 'not-steamos'",
+    )?;
     let is_readonly = readonly_out.to_lowercase().contains("enabled");
 
-    let so_out = ssh_exec(&sess, "test -f ~/.local/share/SLSsteam/SLSsteam.so && echo 'EXISTS' || echo 'MISSING'")?;
+    let so_out = ssh_exec(
+        &sess,
+        "test -f ~/.local/share/SLSsteam/SLSsteam.so && echo 'EXISTS' || echo 'MISSING'",
+    )?;
     let slssteam_so_exists = so_out.contains("EXISTS");
 
-    let inject_out = ssh_exec(&sess, "test -f ~/.local/share/SLSsteam/library-inject.so && echo 'EXISTS' || echo 'MISSING'")?;
+    let inject_out = ssh_exec(
+        &sess,
+        "test -f ~/.local/share/SLSsteam/library-inject.so && echo 'EXISTS' || echo 'MISSING'",
+    )?;
     let library_inject_so_exists = inject_out.contains("EXISTS");
 
-    let config_out = ssh_exec(&sess, "cat ~/.config/SLSsteam/config.yaml 2>/dev/null || echo ''")?;
+    let config_out = ssh_exec(
+        &sess,
+        "cat ~/.config/SLSsteam/config.yaml 2>/dev/null || echo ''",
+    )?;
     let config_exists = !config_out.is_empty() && !config_out.trim().is_empty();
 
-    let config_play_not_owned = config_out.to_lowercase().contains("playnotownedgames: true")
+    let config_play_not_owned = config_out
+        .to_lowercase()
+        .contains("playnotownedgames: true")
         || config_out.to_lowercase().contains("playnotownedgames: yes");
     let config_safe_mode_on = config_out.to_lowercase().contains("safemode: true")
         || config_out.to_lowercase().contains("safemode: yes");
@@ -167,10 +185,16 @@ pub async fn verify_slssteam(config: SshConfig) -> Result<SlssteamStatus, String
         .filter(|l| l.trim().starts_with("- ") && l.trim().len() > 2)
         .count();
 
-    let jupiter_out = ssh_exec(&sess, "grep -c 'LD_AUDIT' /usr/bin/steam-jupiter 2>/dev/null || echo '0'")?;
+    let jupiter_out = ssh_exec(
+        &sess,
+        "grep -c 'LD_AUDIT' /usr/bin/steam-jupiter 2>/dev/null || echo '0'",
+    )?;
     let steam_jupiter_patched = jupiter_out.trim().parse::<i32>().unwrap_or(0) > 0;
 
-    let desktop_out = ssh_exec(&sess, "grep -c 'LD_AUDIT' ~/.local/share/applications/steam.desktop 2>/dev/null || echo '0'")?;
+    let desktop_out = ssh_exec(
+        &sess,
+        "grep -c 'LD_AUDIT' ~/.local/share/applications/steam.desktop 2>/dev/null || echo '0'",
+    )?;
     let desktop_entry_patched = desktop_out.trim().parse::<i32>().unwrap_or(0) > 0;
 
     Ok(SlssteamStatus {
@@ -250,7 +274,11 @@ pub async fn detect_steam_deck() -> Result<SteamDeckDetection, String> {
         os_release
             .lines()
             .find(|l| l.starts_with("PRETTY_NAME="))
-            .map(|l| l.trim_start_matches("PRETTY_NAME=").trim_matches('"').to_string())
+            .map(|l| {
+                l.trim_start_matches("PRETTY_NAME=")
+                    .trim_matches('"')
+                    .to_string()
+            })
             .unwrap_or_else(|| "Linux".to_string())
     } else if cfg!(target_os = "macos") {
         "macOS".to_string()
@@ -285,19 +313,26 @@ pub async fn check_readonly_status(config: SshConfig) -> Result<bool, String> {
         return Err("IP address is required".to_string());
     }
 
-    let ip: IpAddr = config.ip.parse().map_err(|_| format!("Invalid IP: {}", config.ip))?;
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP: {}", config.ip))?;
     let addr = SocketAddr::new(ip, config.port);
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(5))
         .map_err(|e| format!("Connection failed: {}", e))?;
 
     let mut sess = ssh2::Session::new().map_err(|e| format!("SSH session error: {}", e))?;
     sess.set_tcp_stream(tcp);
-    sess.handshake().map_err(|e| format!("SSH handshake failed: {}", e))?;
+    sess.handshake()
+        .map_err(|e| format!("SSH handshake failed: {}", e))?;
     sess.userauth_password(&config.username, &config.password)
         .map_err(|e| format!("SSH auth failed: {}", e))?;
 
-    let mut channel = sess.channel_session().map_err(|e| format!("Channel error: {}", e))?;
-    channel.exec("steamos-readonly status 2>/dev/null || echo 'unknown'")
+    let mut channel = sess
+        .channel_session()
+        .map_err(|e| format!("Channel error: {}", e))?;
+    channel
+        .exec("steamos-readonly status 2>/dev/null || echo 'unknown'")
         .map_err(|e| format!("Exec error: {}", e))?;
 
     let mut output = String::new();
@@ -322,7 +357,9 @@ pub async fn install_slssteam(
 
         log.push_str("Checking for SteamOS/immutable distro...\n");
         if Path::new("/usr/bin/steamos-readonly").exists() {
-            let _ = Command::new("sudo").args(["steamos-readonly", "disable"]).status();
+            let _ = Command::new("sudo")
+                .args(["steamos-readonly", "disable"])
+                .status();
             log.push_str("Readonly disable attempted.\n");
         }
 
@@ -336,14 +373,11 @@ pub async fn install_slssteam(
 
         std::fs::create_dir_all(&slssteam_dir)
             .map_err(|e| format!("Failed to create dir: {}", e))?;
-        std::fs::create_dir_all(&config_dir)
-            .map_err(|e| format!("Failed to create dir: {}", e))?;
-        std::fs::create_dir_all(&apps_dir)
-            .map_err(|e| format!("Failed to create dir: {}", e))?;
+        std::fs::create_dir_all(&config_dir).map_err(|e| format!("Failed to create dir: {}", e))?;
+        std::fs::create_dir_all(&apps_dir).map_err(|e| format!("Failed to create dir: {}", e))?;
 
         let dest_so = slssteam_dir.join("SLSsteam.so");
-        std::fs::copy(&slssteam_path, &dest_so)
-            .map_err(|e| format!("Failed to copy: {}", e))?;
+        std::fs::copy(&slssteam_path, &dest_so).map_err(|e| format!("Failed to copy: {}", e))?;
 
         #[cfg(unix)]
         {
@@ -377,14 +411,39 @@ pub async fn install_slssteam(
         }
 
         let config_file = config_dir.join("config.yaml");
-        let default_config_content = "PlayNotOwnedGames: yes\nSafeMode: yes\nAdditionalApps:\n- 480\n";
+        let default_config_content = r#"DisableFamilyShareLock: yes
+UseWhitelist: no
+AutoFilterList: yes
+AppIds: null
+PlayNotOwnedGames: no
+AdditionalApps:
+- 480
+DlcData: null
+FakeOffline: null
+DenuvoGames: null
+DenuvoSpoof: no
+BlockEncryptedAppTickets: no
+SafeMode: yes
+Notifications: yes
+WarnHashMissmatch: no
+NotifyInit: yes
+LogLevel: 1
+ExtendedLogging: no
+AppTokens: null 
+API: no
+FakeAppIds: null
+"#;
         std::fs::write(&config_file, default_config_content)
             .map_err(|e| format!("Failed to write config: {}", e))?;
         log.push_str("Config.yaml written.\n");
 
         let library_inject_path = slssteam_dir.join("library-inject.so");
         let ld_audit_path = if library_inject_path.exists() {
-            format!("{}:{}", library_inject_path.to_string_lossy(), dest_so.to_string_lossy())
+            format!(
+                "{}:{}",
+                library_inject_path.to_string_lossy(),
+                dest_so.to_string_lossy()
+            )
         } else {
             dest_so.to_string_lossy().to_string()
         };
@@ -392,7 +451,10 @@ pub async fn install_slssteam(
         if Path::new("/usr/share/applications/steam.desktop").exists() {
             let original = std::fs::read_to_string("/usr/share/applications/steam.desktop")
                 .map_err(|e| format!("Failed to read: {}", e))?;
-            let patched = original.replace("Exec=/", &format!("Exec=env LD_AUDIT=\"{}\" /", ld_audit_path));
+            let patched = original.replace(
+                "Exec=/",
+                &format!("Exec=env LD_AUDIT=\"{}\" /", ld_audit_path),
+            );
             let user_desktop = apps_dir.join("steam.desktop");
             std::fs::write(&user_desktop, patched)
                 .map_err(|e| format!("Failed to write: {}", e))?;
@@ -400,7 +462,13 @@ pub async fn install_slssteam(
         }
 
         if Path::new("/usr/bin/steam-jupiter").exists() {
-            let _ = Command::new("sudo").args(["cp", "/usr/bin/steam-jupiter", &config_dir.join("steam-jupiter.bak").to_string_lossy()]).status();
+            let _ = Command::new("sudo")
+                .args([
+                    "cp",
+                    "/usr/bin/steam-jupiter",
+                    &config_dir.join("steam-jupiter.bak").to_string_lossy(),
+                ])
+                .status();
             let patch_cmd = format!(
                 "sudo sed -i 's|^exec /usr/lib/steam/steam|exec env LD_AUDIT=\"{}\" /usr/lib/steam/steam|' /usr/bin/steam-jupiter",
                 ld_audit_path
@@ -421,15 +489,17 @@ pub async fn install_slssteam(
         return Err(format!("SLSsteam.so not found at: {}", slssteam_path));
     }
 
-    let slssteam_bytes = fs::read(&slssteam_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
-    let ip: IpAddr = config.ip.parse().map_err(|_| format!("Invalid IP: {}", config.ip))?;
+    let slssteam_bytes =
+        fs::read(&slssteam_path).map_err(|e| format!("Failed to read file: {}", e))?;
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP: {}", config.ip))?;
     let addr = SocketAddr::new(ip, config.port);
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
         .map_err(|e| format!("Connection failed: {}", e))?;
 
-    let mut sess = ssh2::Session::new()
-        .map_err(|e| format!("SSH session error: {}", e))?;
+    let mut sess = ssh2::Session::new().map_err(|e| format!("SSH session error: {}", e))?;
     sess.set_tcp_stream(tcp);
     sess.handshake()
         .map_err(|e| format!("SSH handshake failed: {}", e))?;
@@ -441,24 +511,47 @@ pub async fn install_slssteam(
     ssh_exec(&sess, "mkdir -p ~/.local/share/SLSsteam ~/.config/SLSsteam")?;
     log.push_str("Directories created.\n");
 
-    let default_config = "PlayNotOwnedGames: yes\nSafeMode: yes\nAdditionalApps:\n- 480\n";
+    let default_config = r#"DisableFamilyShareLock: yes
+UseWhitelist: no
+AutoFilterList: yes
+AppIds: null
+PlayNotOwnedGames: no
+AdditionalApps:
+- 480
+DlcData: null
+FakeOffline: null
+DenuvoGames: null
+DenuvoSpoof: no
+BlockEncryptedAppTickets: no
+SafeMode: yes
+Notifications: yes
+WarnHashMissmatch: no
+NotifyInit: yes
+LogLevel: 1
+ExtendedLogging: no
+AppTokens: null 
+API: no
+FakeAppIds: null
+"#;
     let config_remote_path = "/home/deck/.config/SLSsteam/config.yaml";
-    let sftp_config = sess.sftp()
-        .map_err(|e| format!("SFTP error: {}", e))?;
-    let mut config_file = sftp_config.create(Path::new(config_remote_path))
+    let sftp_config = sess.sftp().map_err(|e| format!("SFTP error: {}", e))?;
+    let mut config_file = sftp_config
+        .create(Path::new(config_remote_path))
         .map_err(|e| format!("Create file error: {}", e))?;
-    config_file.write_all(default_config.as_bytes())
+    config_file
+        .write_all(default_config.as_bytes())
         .map_err(|e| format!("Write error: {}", e))?;
     drop(config_file);
     drop(sftp_config);
     log.push_str("Config written.\n");
 
-    let sftp = sess.sftp()
-        .map_err(|e| format!("SFTP error: {}", e))?;
+    let sftp = sess.sftp().map_err(|e| format!("SFTP error: {}", e))?;
     let remote_path = "/home/deck/.local/share/SLSsteam/SLSsteam.so";
-    let mut remote_file = sftp.create(Path::new(remote_path))
+    let mut remote_file = sftp
+        .create(Path::new(remote_path))
         .map_err(|e| format!("Create file error: {}", e))?;
-    remote_file.write_all(&slssteam_bytes)
+    remote_file
+        .write_all(&slssteam_bytes)
         .map_err(|e| format!("Write error: {}", e))?;
     drop(remote_file);
 
@@ -468,14 +561,15 @@ pub async fn install_slssteam(
     let slssteam_cache_dir = get_slssteam_cache_dir()?;
     let library_inject_path = slssteam_cache_dir.join("library-inject.so");
     if library_inject_path.exists() {
-        let inject_bytes = fs::read(&library_inject_path)
-            .map_err(|e| format!("Read error: {}", e))?;
-        let sftp2 = sess.sftp()
-            .map_err(|e| format!("SFTP error: {}", e))?;
+        let inject_bytes =
+            fs::read(&library_inject_path).map_err(|e| format!("Read error: {}", e))?;
+        let sftp2 = sess.sftp().map_err(|e| format!("SFTP error: {}", e))?;
         let remote_inject_path = "/home/deck/.local/share/SLSsteam/library-inject.so";
-        let mut remote_inject = sftp2.create(Path::new(remote_inject_path))
+        let mut remote_inject = sftp2
+            .create(Path::new(remote_inject_path))
             .map_err(|e| format!("Create file error: {}", e))?;
-        remote_inject.write_all(&inject_bytes)
+        remote_inject
+            .write_all(&inject_bytes)
             .map_err(|e| format!("Write error: {}", e))?;
         ssh_exec(&sess, "chmod 755 ~/.local/share/SLSsteam/library-inject.so")?;
         log.push_str("library-inject.so uploaded.\n");
@@ -503,8 +597,15 @@ fi
     );
     ssh_exec(&sess, &sudo_backup)?;
 
-    let check_inject = ssh_exec(&sess, "test -f ~/.local/share/SLSsteam/library-inject.so && echo 'EXISTS' || echo 'MISSING'");
-    let ld_audit_remote = if check_inject.as_ref().map(|s| s.contains("EXISTS")).unwrap_or(false) {
+    let check_inject = ssh_exec(
+        &sess,
+        "test -f ~/.local/share/SLSsteam/library-inject.so && echo 'EXISTS' || echo 'MISSING'",
+    );
+    let ld_audit_remote = if check_inject
+        .as_ref()
+        .map(|s| s.contains("EXISTS"))
+        .unwrap_or(false)
+    {
         "/home/deck/.local/share/SLSsteam/library-inject.so:/home/deck/.local/share/SLSsteam/SLSsteam.so"
     } else {
         "/home/deck/.local/share/SLSsteam/SLSsteam.so"
@@ -530,24 +631,31 @@ fi
 ///   1234: 480
 ///   5678: 480
 /// ```
-pub fn modify_slssteam_config_section(content: &str, section: &str, key: &str, value: &str) -> String {
+pub fn modify_slssteam_config_section(
+    content: &str,
+    section: &str,
+    key: &str,
+    value: &str,
+) -> String {
     let section_header = format!("{}:", section);
+    let section_header_null = format!("{}: null", section);
     let key_entry = format!("  {}: {}", key, value); // 2-space indent
-    
+
     // Check if this exact key already exists (to update rather than duplicate)
     let key_pattern_exact = format!("  {}:", key);
-    
+
     let key_exists = content.lines().any(|line| {
         let trimmed = line.trim();
         trimmed.starts_with(&format!("{}: ", key)) || trimmed == format!("{}:", key)
     });
-    
+
     if key_exists {
         // Key exists, update its value
         let mut result = String::new();
         for line in content.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with(&format!("{}: ", key)) || trimmed.starts_with(&key_pattern_exact) {
+            if trimmed.starts_with(&format!("{}: ", key)) || trimmed.starts_with(&key_pattern_exact)
+            {
                 result.push_str(&key_entry);
                 result.push('\n');
             } else {
@@ -557,27 +665,38 @@ pub fn modify_slssteam_config_section(content: &str, section: &str, key: &str, v
         }
         return result;
     }
-    
-    // Key doesn't exist - add it under the section header
+
+    // Key doesn't exist - find section
     let mut result = String::new();
     let mut found_section = false;
-    
+
     for line in content.lines() {
         let trimmed = line.trim();
-        
+
+        // Check for "Section: null" -> replace with "Section:" and add item
+        if trimmed == section_header_null || (trimmed.starts_with(&format!("{}: null", section))) {
+            result.push_str(&section_header);
+            result.push('\n');
+            result.push_str(&key_entry);
+            result.push('\n');
+            found_section = true;
+            continue; // Skip the original null line
+        }
+
         result.push_str(line);
         result.push('\n');
-        
+
         // Check if this line is our target section header (e.g., "FakeAppIds:")
-        // The section header should be exactly "Section:" with nothing else on the line
-        if trimmed == section_header || (trimmed.starts_with(&section_header) && trimmed.len() == section_header.len()) {
+        if trimmed == section_header
+            || (trimmed.starts_with(&section_header) && trimmed.len() == section_header.len())
+        {
             // Add our new entry right after the section header
             result.push_str(&key_entry);
             result.push('\n');
             found_section = true;
         }
     }
-    
+
     // If section wasn't found, append it at the end
     if !found_section {
         if !result.is_empty() && !result.ends_with('\n') {
@@ -591,7 +710,7 @@ pub fn modify_slssteam_config_section(content: &str, section: &str, key: &str, v
         result.push_str(&key_entry);
         result.push('\n');
     }
-    
+
     result
 }
 
@@ -603,22 +722,22 @@ pub async fn add_fake_app_id(
     fake_app_id: String,
 ) -> Result<String, String> {
     let _ = app_handle; // Used for future async operations
-    
+
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
     let config_path = home.join(".config/SLSsteam/config.yaml");
-    
+
     if !config_path.exists() {
         return Err("SLSsteam config not found".to_string());
     }
-    
+
     let content = std::fs::read_to_string(&config_path)
         .map_err(|e| format!("Failed to read config: {}", e))?;
-    
+
     let new_config = modify_slssteam_config_section(&content, "FakeAppIds", &app_id, &fake_app_id);
-    
+
     std::fs::write(&config_path, &new_config)
         .map_err(|e| format!("Failed to write config: {}", e))?;
-    
+
     Ok(format!("Added FakeAppId: {} -> {}", app_id, fake_app_id))
 }
 
@@ -631,22 +750,22 @@ pub async fn add_fake_app_id(
 //     token: String,
 // ) -> Result<String, String> {
 //     let _ = app_handle;
-//     
+//
 //     let home = dirs::home_dir().ok_or("Could not find home directory")?;
 //     let config_path = home.join(".config/SLSsteam/config.yaml");
-//     
+//
 //     if !config_path.exists() {
 //         return Err("SLSsteam config not found".to_string());
 //     }
-//     
+//
 //     let content = std::fs::read_to_string(&config_path)
 //         .map_err(|e| format!("Failed to read config: {}", e))?;
-//     
+//
 //     let new_config = modify_slssteam_config_section(&content, "AppTokens", &app_id, &token);
-//     
+//
 //     std::fs::write(&config_path, &new_config)
 //         .map_err(|e| format!("Failed to write config: {}", e))?;
-//     
+//
 //     Ok(format!("Added AppToken for: {}", app_id))
 // }
 
@@ -658,5 +777,8 @@ pub async fn generate_achievements(
 ) -> Result<String, String> {
     let _ = app_handle;
     // Placeholder - actual achievement generation requires Steam API integration
-    Ok(format!("Achievement generation not yet implemented for {}", app_id))
+    Ok(format!(
+        "Achievement generation not yet implemented for {}",
+        app_id
+    ))
 }

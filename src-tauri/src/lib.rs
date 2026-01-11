@@ -122,6 +122,7 @@ pub fn run() {
             get_cached_slssteam_path,
             // Steam update disable and libcurl fix commands
             disable_steam_updates,
+            enable_steam_updates,
             fix_libcurl32,
             check_steam_updates_status,
             check_libcurl32_status,
@@ -141,6 +142,14 @@ pub fn run() {
             generate_achievements,
             // SteamCMD integration
             steamcmd_get_app_info,
+            // Setup wizard commands
+            is_first_launch,
+            mark_setup_complete,
+            reset_setup,
+            run_full_setup,
+            // Smart Steam update handling
+            handle_steam_update,
+            are_steam_updates_blocked,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

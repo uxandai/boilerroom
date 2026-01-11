@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::Read;
-use std::path::{Path, PathBuf};
+// use std::io::Read; // Unused
+// use std::path::{Path, PathBuf}; // Unused
 use std::sync::OnceLock;
 
 /// Game manifest data extracted from ZIP

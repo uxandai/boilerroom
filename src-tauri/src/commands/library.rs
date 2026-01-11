@@ -68,11 +68,17 @@ fn get_steam_library_paths(sess: &ssh2::Session) -> Result<Vec<String>, String> 
     use std::collections::HashSet;
     let mut libraries_set: HashSet<String> = HashSet::new();
 
-    let real_path_out = ssh_exec(sess, "readlink -f ~/.steam/steam 2>/dev/null || echo '/home/deck/.steam/steam'")?;
+    let real_path_out = ssh_exec(
+        sess,
+        "readlink -f ~/.steam/steam 2>/dev/null || echo '/home/deck/.steam/steam'",
+    )?;
     let primary_path = real_path_out.trim().to_string();
     libraries_set.insert(primary_path.clone());
 
-    let vdf_content = ssh_exec(sess, "cat ~/.steam/steam/steamapps/libraryfolders.vdf 2>/dev/null || echo ''")?;
+    let vdf_content = ssh_exec(
+        sess,
+        "cat ~/.steam/steam/steamapps/libraryfolders.vdf 2>/dev/null || echo ''",
+    )?;
     for path in extract_library_paths_from_vdf(&vdf_content) {
         libraries_set.insert(path);
     }
@@ -86,13 +92,15 @@ pub async fn list_installed_games(config: SshConfig) -> Result<Vec<InstalledGame
         return Err("IP address is required".to_string());
     }
 
-    let ip: IpAddr = config.ip.parse().map_err(|_| format!("Invalid IP: {}", config.ip))?;
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP: {}", config.ip))?;
     let addr = SocketAddr::new(ip, config.port);
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
         .map_err(|e| format!("Connection failed: {}", e))?;
 
-    let mut sess = ssh2::Session::new()
-        .map_err(|e| format!("SSH session error: {}", e))?;
+    let mut sess = ssh2::Session::new().map_err(|e| format!("SSH session error: {}", e))?;
     sess.set_tcp_stream(tcp);
     sess.handshake()
         .map_err(|e| format!("SSH handshake failed: {}", e))?;
@@ -141,7 +149,10 @@ pub async fn list_installed_games(config: SshConfig) -> Result<Vec<InstalledGame
 
             let game_path = format!("{}/{}", common_path, name);
 
-            let marker_cmd = format!("test -d '{}/.DepotDownloader' && echo 'YES' || echo 'NO'", game_path);
+            let marker_cmd = format!(
+                "test -d '{}/.DepotDownloader' && echo 'YES' || echo 'NO'",
+                game_path
+            );
             let marker_out = ssh_exec(&sess, &marker_cmd)?;
             let has_depotdownloader_marker = marker_out.trim() == "YES";
 
@@ -149,7 +160,10 @@ pub async fn list_installed_games(config: SshConfig) -> Result<Vec<InstalledGame
             let size_out = ssh_exec(&sess, &size_cmd)?;
             let size_bytes: u64 = size_out.trim().parse().unwrap_or(0);
 
-            let app_id = installdir_to_appid.get(name).cloned().unwrap_or_else(|| "unknown".to_string());
+            let app_id = installdir_to_appid
+                .get(name)
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
 
             games.push(InstalledGame {
                 app_id,
@@ -272,7 +286,10 @@ pub async fn list_installed_games_local() -> Result<Vec<InstalledGame>, String> 
                     }
                 }
 
-                let app_id = installdir_to_appid.get(&name).cloned().unwrap_or_else(|| "unknown".to_string());
+                let app_id = installdir_to_appid
+                    .get(&name)
+                    .cloned()
+                    .unwrap_or_else(|| "unknown".to_string());
 
                 games.push(InstalledGame {
                     app_id,
@@ -290,7 +307,10 @@ pub async fn list_installed_games_local() -> Result<Vec<InstalledGame>, String> 
 }
 
 #[tauri::command]
-pub async fn check_game_installed(config: SshConfig, app_id: String) -> Result<Vec<InstalledDepot>, String> {
+pub async fn check_game_installed(
+    config: SshConfig,
+    _app_id: String,
+) -> Result<Vec<InstalledDepot>, String> {
     if config.is_local {
         let home = dirs::home_dir().ok_or("Could not find home directory")?;
         let mut paths = Vec::new();
@@ -338,13 +358,15 @@ pub async fn check_game_installed(config: SshConfig, app_id: String) -> Result<V
         return Ok(installed_depots);
     }
 
-    let ip: IpAddr = config.ip.parse().map_err(|_| format!("Invalid IP: {}", config.ip))?;
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP: {}", config.ip))?;
     let addr = SocketAddr::new(ip, config.port);
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
         .map_err(|e| format!("Connection failed: {}", e))?;
 
-    let mut sess = ssh2::Session::new()
-        .map_err(|e| format!("SSH session error: {}", e))?;
+    let mut sess = ssh2::Session::new().map_err(|e| format!("SSH session error: {}", e))?;
     sess.set_tcp_stream(tcp);
     sess.handshake()
         .map_err(|e| format!("SSH handshake failed: {}", e))?;
@@ -418,13 +440,15 @@ pub async fn get_steam_libraries(config: SshConfig) -> Result<Vec<String>, Strin
         return Ok(paths);
     }
 
-    let ip: IpAddr = config.ip.parse().map_err(|_| format!("Invalid IP: {}", config.ip))?;
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP: {}", config.ip))?;
     let addr = SocketAddr::new(ip, config.port);
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
         .map_err(|e| format!("Connection failed: {}", e))?;
 
-    let mut sess = ssh2::Session::new()
-        .map_err(|e| format!("SSH session error: {}", e))?;
+    let mut sess = ssh2::Session::new().map_err(|e| format!("SSH session error: {}", e))?;
     sess.set_tcp_stream(tcp);
     sess.handshake()
         .map_err(|e| format!("SSH handshake failed: {}", e))?;
@@ -435,7 +459,11 @@ pub async fn get_steam_libraries(config: SshConfig) -> Result<Vec<String>, Strin
 }
 
 #[tauri::command]
-pub async fn uninstall_game(config: SshConfig, game_path: String, app_id: String) -> Result<String, String> {
+pub async fn uninstall_game(
+    config: SshConfig,
+    game_path: String,
+    app_id: String,
+) -> Result<String, String> {
     if config.is_local {
         let game_dir = PathBuf::from(&game_path);
         if game_dir.exists() {
@@ -466,13 +494,15 @@ pub async fn uninstall_game(config: SshConfig, game_path: String, app_id: String
         return Ok(format!("Uninstalled game at {} (local mode)", game_path));
     }
 
-    let ip: IpAddr = config.ip.parse().map_err(|_| format!("Invalid IP: {}", config.ip))?;
+    let ip: IpAddr = config
+        .ip
+        .parse()
+        .map_err(|_| format!("Invalid IP: {}", config.ip))?;
     let addr = SocketAddr::new(ip, config.port);
     let tcp = TcpStream::connect_timeout(&addr, Duration::from_secs(10))
         .map_err(|e| format!("Connection failed: {}", e))?;
 
-    let mut sess = ssh2::Session::new()
-        .map_err(|e| format!("SSH session error: {}", e))?;
+    let mut sess = ssh2::Session::new().map_err(|e| format!("SSH session error: {}", e))?;
     sess.set_tcp_stream(tcp);
     sess.handshake()
         .map_err(|e| format!("SSH handshake failed: {}", e))?;
@@ -482,12 +512,14 @@ pub async fn uninstall_game(config: SshConfig, game_path: String, app_id: String
     let rm_cmd = format!("rm -rf '{}'", game_path);
     ssh_exec(&sess, &rm_cmd)?;
 
-    let acf_cmd = format!("rm -f \"$(dirname '{}')/../appmanifest_{}.acf\"", game_path, app_id);
+    let acf_cmd = format!(
+        "rm -f \"$(dirname '{}')/../appmanifest_{}.acf\"",
+        game_path, app_id
+    );
     ssh_exec(&sess, &acf_cmd)?;
 
     let config_path = "/home/deck/.config/SLSsteam/config.yaml";
-    let sftp = sess.sftp()
-        .map_err(|e| format!("SFTP error: {}", e))?;
+    let sftp = sess.sftp().map_err(|e| format!("SFTP error: {}", e))?;
 
     let config_content = match sftp.open(Path::new(config_path)) {
         Ok(mut f) => {
@@ -500,12 +532,17 @@ pub async fn uninstall_game(config: SshConfig, game_path: String, app_id: String
 
     let new_content = remove_app_from_config(&config_content, &app_id)?;
 
-    let mut remote_f = sftp.create(Path::new(config_path))
+    let mut remote_f = sftp
+        .create(Path::new(config_path))
         .map_err(|e| format!("Failed to create remote file: {}", e))?;
-    remote_f.write_all(new_content.as_bytes())
+    remote_f
+        .write_all(new_content.as_bytes())
         .map_err(|e| format!("Failed to write to remote file: {}", e))?;
 
-    Ok(format!("Uninstalled game at {} (removed ACF and config)", game_path))
+    Ok(format!(
+        "Uninstalled game at {} (removed ACF and config)",
+        game_path
+    ))
 }
 
 fn remove_app_from_config(content: &str, app_id: &str) -> Result<String, String> {
@@ -513,11 +550,13 @@ fn remove_app_from_config(content: &str, app_id: &str) -> Result<String, String>
         return Ok(String::new());
     }
 
-    let mut doc: serde_yaml::Value = serde_yaml::from_str(content)
-        .map_err(|e| format!("Failed to parse YAML: {}", e))?;
+    let mut doc: serde_yaml::Value =
+        serde_yaml::from_str(content).map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
     if let Some(mapping) = doc.as_mapping_mut() {
-        if let Some(additional_apps) = mapping.get_mut(&serde_yaml::Value::String("AdditionalApps".to_string())) {
+        if let Some(additional_apps) =
+            mapping.get_mut(serde_yaml::Value::String("AdditionalApps".to_string()))
+        {
             if let Some(apps_list) = additional_apps.as_sequence_mut() {
                 let app_id_num: i64 = app_id.parse().unwrap_or(0);
                 apps_list.retain(|v| match v {
@@ -533,11 +572,19 @@ fn remove_app_from_config(content: &str, app_id: &str) -> Result<String, String>
 }
 
 #[tauri::command]
-pub async fn check_game_update(app_id: String, app_handle: tauri::AppHandle) -> Result<bool, String> {
+pub async fn check_game_update(
+    app_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<bool, String> {
     let api_key = super::settings::get_api_key(app_handle.clone()).await?;
-    let url = format!("https://morrenus.martylek.com/api/bundles/search?query={}&key={}", app_id, api_key);
+    let url = format!(
+        "https://morrenus.martylek.com/api/bundles/search?query={}&key={}",
+        app_id, api_key
+    );
 
-    let response = reqwest::get(&url).await.map_err(|e| format!("API request failed: {}", e))?;
+    let response = reqwest::get(&url)
+        .await
+        .map_err(|e| format!("API request failed: {}", e))?;
 
     if !response.status().is_success() {
         return Err("API returned error".to_string());

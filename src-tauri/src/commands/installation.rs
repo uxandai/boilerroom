@@ -11,6 +11,7 @@ use super::connection::SshConfig;
 
 /// Start pipelined installation (Download -> Process -> Upload)
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn start_pipelined_install(
     install_manager: State<'_, InstallManager>,
     app_id: String,

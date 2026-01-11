@@ -181,12 +181,12 @@ fn find_steam_section_position(content: &str) -> Option<usize> {
     // The pattern in a real config.vdf is:
     // "Software" > "Valve" > "Steam" > { ... }
     let pattern = "\"Steam\"";
-    
+
     // Find all occurrences and look for one that's inside Valve section
     let mut search_start = 0;
     while let Some(pos) = content[search_start..].find(pattern) {
         let absolute_pos = search_start + pos;
-        
+
         // Check if this is likely inside a Valve section by looking at prior content
         let prior = &content[..absolute_pos];
         if prior.contains("\"Valve\"") && prior.contains("\"Software\"") {
@@ -194,21 +194,21 @@ fn find_steam_section_position(content: &str) -> Option<usize> {
             let after = &content[absolute_pos..];
             if let Some(brace_pos) = after.find('{') {
                 let insert_pos = absolute_pos + brace_pos + 1;
-                
+
                 // Skip newline after brace
                 let remainder = &content[insert_pos..];
                 let skip = remainder
                     .chars()
                     .take_while(|c| *c == '\n' || *c == '\r')
                     .count();
-                
+
                 return Some(insert_pos + skip);
             }
         }
-        
+
         search_start = absolute_pos + pattern.len();
     }
-    
+
     None
 }
 
@@ -223,6 +223,7 @@ fn extract_quoted_string(line: &str) -> Option<String> {
 /// Steam depots are typically numbered: app_id, app_id+1, app_id+2, etc.
 /// This function finds all depot keys where depot_id is within [app_id, app_id+100]
 /// Returns a Vec of (depot_id, decryption_key) pairs that were found
+#[allow(dead_code)]
 pub fn extract_depot_keys_by_app_id(content: &str, app_id: &str) -> Vec<(String, String)> {
     let mut result = Vec::new();
 
