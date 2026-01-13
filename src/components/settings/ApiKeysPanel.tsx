@@ -17,7 +17,8 @@ export function ApiKeysPanel() {
     const [showApiKey, setShowApiKey] = useState(false);
     const [localApiKey, setLocalApiKey] = useState(settings.apiKey);
     const [isSaving, setIsSaving] = useState(false);
-    const [isFetchingGistKey, setIsFetchingGistKey] = useState(false);
+    const [isFetchingFromUrl, setIsFetchingFromUrl] = useState(false);
+    const [showUrlPassword, setShowUrlPassword] = useState(false);
     const [justSaved, setJustSaved] = useState(false);
     const [justSavedGrid, setJustSavedGrid] = useState(false);
     const [justSavedSteam, setJustSavedSteam] = useState(false); // For Steam Web API
@@ -92,19 +93,79 @@ export function ApiKeysPanel() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                    {/* Use Gist Key Checkbox */}
+                    {/* Use API Key from URL Checkbox */}
                     <div className="flex items-center space-x-2">
                         <Checkbox
-                            id="useGistKey"
-                            checked={settings.useGistKey}
-                            onCheckedChange={async (checked) => {
-                                setSettings({ useGistKey: !!checked });
-                                if (checked) {
-                                    setIsFetchingGistKey(true);
+                            id="useApiKeyUrl"
+                            checked={settings.useApiKeyUrl}
+                            onCheckedChange={(checked) => {
+                                setSettings({ useApiKeyUrl: !!checked });
+                            }}
+                        />
+                        <Label htmlFor="useApiKeyUrl" className="text-sm cursor-pointer">
+                            Fetch API key from txt file URL
+                        </Label>
+                    </div>
+
+                    {/* URL and Auth fields (shown when checkbox is checked) */}
+                    {settings.useApiKeyUrl && (
+                        <div className="space-y-3 pl-6 border-l-2 border-[#2a475e]">
+                            <div className="space-y-2">
+                                <Label htmlFor="apiKeyUrl">URL to txt file (http/https)</Label>
+                                <Input
+                                    id="apiKeyUrl"
+                                    type="url"
+                                    placeholder="https://example.com/api-key.txt"
+                                    value={settings.apiKeyUrl || ""}
+                                    onChange={(e) => setSettings({ apiKeyUrl: e.target.value })}
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-2">
+                                    <Label htmlFor="apiKeyUrlUsername">HTTP Auth Username (optional)</Label>
+                                    <Input
+                                        id="apiKeyUrlUsername"
+                                        placeholder="username"
+                                        value={settings.apiKeyUrlUsername || ""}
+                                        onChange={(e) => setSettings({ apiKeyUrlUsername: e.target.value })}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="apiKeyUrlPassword">HTTP Auth Password (optional)</Label>
+                                    <div className="relative">
+                                        <Input
+                                            id="apiKeyUrlPassword"
+                                            type={showUrlPassword ? "text" : "password"}
+                                            placeholder="password"
+                                            value={settings.apiKeyUrlPassword || ""}
+                                            onChange={(e) => setSettings({ apiKeyUrlPassword: e.target.value })}
+                                        />
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="absolute right-0 top-0 h-full hover:bg-transparent"
+                                            onClick={() => setShowUrlPassword(!showUrlPassword)}
+                                        >
+                                            {showUrlPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                            <Button
+                                onClick={async () => {
+                                    if (!settings.apiKeyUrl) {
+                                        addLog("error", "Please enter a URL to fetch the API key from");
+                                        return;
+                                    }
+                                    setIsFetchingFromUrl(true);
                                     try {
-                                        const gistUrl = "https://gist.githubusercontent.com/ppogorze/592adb16ebf2cc27ce976bacf1928023/raw/gistfile1.txt";
-                                        addLog("info", `Fetching API key from Gist...`);
-                                        const response = await fetch(gistUrl);
+                                        addLog("info", `Fetching API key from URL...`);
+                                        const headers: HeadersInit = {};
+                                        if (settings.apiKeyUrlUsername && settings.apiKeyUrlPassword) {
+                                            const credentials = btoa(`${settings.apiKeyUrlUsername}:${settings.apiKeyUrlPassword}`);
+                                            headers["Authorization"] = `Basic ${credentials}`;
+                                        }
+                                        const response = await fetch(settings.apiKeyUrl, { headers });
                                         if (response.ok) {
                                             const key = await response.text();
                                             const trimmedKey = key.trim();
@@ -112,25 +173,31 @@ export function ApiKeysPanel() {
                                             setSettings({ apiKey: trimmedKey });
                                             const { saveApiKey } = await import("@/lib/api");
                                             await saveApiKey(trimmedKey);
-                                            addLog("info", "API key fetched from Gist and saved");
+                                            addLog("info", "API key fetched from URL and saved");
                                         } else {
-                                            addLog("error", `Failed to fetch API key from Gist: HTTP ${response.status}`);
-                                            setSettings({ useGistKey: false });
+                                            addLog("error", `Failed to fetch API key: HTTP ${response.status}`);
                                         }
                                     } catch (error) {
-                                        addLog("error", `Failed to fetch Gist key: ${error}`);
-                                        setSettings({ useGistKey: false });
+                                        addLog("error", `Failed to fetch API key: ${error}`);
                                     } finally {
-                                        setIsFetchingGistKey(false);
+                                        setIsFetchingFromUrl(false);
                                     }
-                                }
-                            }}
-                        />
-                        <Label htmlFor="useGistKey" className="text-sm cursor-pointer flex items-center gap-2">
-                            Use shared key from Gist (auto-fetch)
-                            {isFetchingGistKey && <Loader2 className="w-3 h-3 animate-spin" />}
-                        </Label>
-                    </div>
+                                }}
+                                disabled={isFetchingFromUrl || !settings.apiKeyUrl}
+                                variant="outline"
+                                className="w-full border-[#2a475e] text-white hover:bg-[#2a475e]/50"
+                            >
+                                {isFetchingFromUrl ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        Fetching...
+                                    </>
+                                ) : (
+                                    "Fetch API Key from URL"
+                                )}
+                            </Button>
+                        </div>
+                    )}
 
                     <div className="space-y-2">
                         <Label htmlFor="apiKey">API Key</Label>
@@ -139,14 +206,14 @@ export function ApiKeysPanel() {
                                 <Input
                                     id="apiKey"
                                     type={showApiKey ? "text" : "password"}
-                                    placeholder={settings.useGistKey ? "Using key from Gist" : "Enter key (valid 24h)"}
+                                    placeholder={settings.useApiKeyUrl ? "Using key from URL" : "Enter key (valid 24h)"}
                                     value={localApiKey}
                                     onChange={(e) => {
                                         setLocalApiKey(e.target.value);
-                                        if (settings.useGistKey) setSettings({ useGistKey: false });
+                                        if (settings.useApiKeyUrl) setSettings({ useApiKeyUrl: false });
                                     }}
-                                    disabled={isFetchingGistKey || settings.useGistKey}
-                                    className={settings.useGistKey ? "bg-[#1b2838] text-gray-400" : ""}
+                                    disabled={isFetchingFromUrl || settings.useApiKeyUrl}
+                                    className={settings.useApiKeyUrl ? "bg-[#1b2838] text-gray-400" : ""}
                                 />
                                 <Button
                                     variant="ghost"
@@ -159,7 +226,7 @@ export function ApiKeysPanel() {
                             </div>
                             <Button
                                 onClick={handleSaveApiKey}
-                                disabled={isSaving || isFetchingGistKey}
+                                disabled={isSaving || isFetchingFromUrl}
                                 className="btn-steam min-w-[100px]"
                             >
                                 {justSaved ? (

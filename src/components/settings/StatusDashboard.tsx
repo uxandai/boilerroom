@@ -70,7 +70,7 @@ export function StatusDashboard() {
             items: [
                 {
                     label: "Morrenus API",
-                    status: settings.apiKey || settings.useGistKey ? "ok" : "error",
+                    status: settings.apiKey || settings.useApiKeyUrl ? "ok" : "error",
                 },
                 {
                     label: "SteamGridDB",
