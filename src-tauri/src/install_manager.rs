@@ -1055,6 +1055,16 @@ pub fn add_app_to_config_yaml(content: &str, app_id: &str, game_name: &str) -> S
         return content.to_string();
     }
     
+    // Handle "AdditionalApps: null" explicitly
+    let null_section = "AdditionalApps: null";
+    if let Some(idx) = content.find(null_section) {
+        let mut result = content.to_string();
+        // Replace "AdditionalApps: null" with "AdditionalApps:\n# Game\n- ID"
+        let replacement = format!("AdditionalApps:\n# {}\n- {}", game_name, app_id);
+        result.replace_range(idx..idx+null_section.len(), &replacement);
+        return result;
+    }
+    
     // Find AdditionalApps section
     if let Some(idx) = content.find("AdditionalApps:") {
         // Find the end of AdditionalApps line
@@ -1062,7 +1072,7 @@ pub fn add_app_to_config_yaml(content: &str, app_id: &str, game_name: &str) -> S
         if let Some(newline_idx) = after_key.find('\n') {
             let insert_pos = idx + newline_idx + 1;
             
-            // Insert the new entry with comment (no indentation needed for YAML list items)
+            // Insert the new entry with NO indentation (user preference)
             let new_entry = format!("# {}\n- {}\n", game_name, app_id);
             
             let mut result = String::with_capacity(content.len() + new_entry.len());

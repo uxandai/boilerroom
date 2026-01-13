@@ -108,4 +108,3 @@ CloudSync:
   # Optional: Limit to specific AppIds (empty = all apps that use Steam Cloud)
   AppIds:
 #    - 480)";
-

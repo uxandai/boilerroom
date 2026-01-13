@@ -621,10 +621,18 @@ static bool hkClientRemoteStorage_IsCloudEnabledForApp(void* pClientRemoteStorag
 		enabled
 	);
 
+	// Check disable first
 	if (Apps::shouldDisableCloud(appId))
 	{
 		g_pLog->once("Disabled cloud for %u\n", appId);
 		return false;
+	}
+
+	// Force enable for CloudSync apps
+	if (CloudSync::shouldHandle(appId))
+	{
+		g_pLog->once("CloudSync enabled for %u (forced)\n", appId);
+		return true;
 	}
 
 	return enabled;
@@ -672,6 +680,10 @@ static void hkClientRemoteStorage_PipeLoop(void* pClientRemoteStorage, void* a1,
 			Hooks::IClientRemoteStorage_GetFileNameAndSize.place();
 
 			CloudSync::init();
+		}
+		else
+		{
+			g_pLog->info("CloudSync: CloudSync is DISABLED in config\n");
 		}
 
 		g_pLog->debug("IClientRemoteStorage->vft at %p\n", vft->vtable);
