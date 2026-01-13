@@ -1,7 +1,7 @@
 /**
  * API Keys Panel - manages Morrenus and SteamGridDB API keys
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAppStore } from "@/store/useAppStore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,8 +23,8 @@ export function ApiKeysPanel() {
     const [justSavedGrid, setJustSavedGrid] = useState(false);
     const [justSavedSteam, setJustSavedSteam] = useState(false); // For Steam Web API
 
-    // Sync local key when settings change externally
-    // useEffect(() => setLocalApiKey(settings.apiKey), [settings.apiKey]);
+    // Sync local key when settings change externally (e.g., on app load from backend)
+    useEffect(() => setLocalApiKey(settings.apiKey), [settings.apiKey]);
 
     const handleSaveApiKey = async () => {
         setIsSaving(true);

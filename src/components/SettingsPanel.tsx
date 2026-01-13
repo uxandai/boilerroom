@@ -13,6 +13,7 @@ import { RelaunchSetupButton } from "@/components/SetupWizard";
 import { StatusDashboard } from "@/components/settings/StatusDashboard";
 import { ApiKeysPanel } from "@/components/settings/ApiKeysPanel";
 import { SystemHealthPanel } from "@/components/settings/SystemHealthPanel";
+import { ToolPathsPanel } from "@/components/settings/ToolPathsPanel";
 
 export function SettingsPanel() {
   const { sshConfig, setSshConfig, addLog, setConnectionStatus, connectionMode } = useAppStore();
@@ -230,8 +231,14 @@ export function SettingsPanel() {
         </Card>
       )}
 
+
       {/* System Health & Tools - Consolidated Panel */}
       <SystemHealthPanel />
+
+      <Separator />
+
+      {/* Tool Paths */}
+      <ToolPathsPanel />
 
       <Separator />
 

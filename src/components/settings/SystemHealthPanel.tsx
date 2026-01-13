@@ -2,20 +2,18 @@ import { useState, useEffect } from "react";
 import { useAppStore } from "@/store/useAppStore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+
 import {
     AlertCircle,
     Check,
     RefreshCw,
     Wrench,
     Shield,
-    FolderOpen,
     ChevronDown,
     ChevronUp,
     Activity
 } from "lucide-react";
-import { open } from "@tauri-apps/plugin-dialog";
+
 
 // Interfaces
 interface Lib32Status {
@@ -49,7 +47,7 @@ interface VerifyStatus {
 }
 
 export function SystemHealthPanel() {
-    const { settings, setSettings, connectionMode, sshConfig, addLog } = useAppStore();
+    const { connectionMode, sshConfig, addLog } = useAppStore();
     const [isExpanded, setIsExpanded] = useState(false);
 
     // States
@@ -186,25 +184,7 @@ export function SystemHealthPanel() {
         finally { setLoading(prev => ({ ...prev, fixingLibcurl: false })); }
     };
 
-    const handleBrowseDepotDownloader = async () => {
-        try {
-            const selected = await open({ multiple: false, directory: false, title: "Select DepotDownloaderMod binary" });
-            if (selected) {
-                const path = typeof selected === 'string' ? selected : (selected as { path?: string })?.path || String(selected);
-                setSettings({ depotDownloaderPath: path });
-            }
-        } catch (error) { addLog("error", `Failed to select file: ${error}`); }
-    };
 
-    const handleBrowseSteamless = async () => {
-        try {
-            const selected = await open({ multiple: false, directory: false, filters: [{ name: "Steamless", extensions: ["exe"] }], title: "Select Steamless.exe" });
-            if (selected) {
-                const path = typeof selected === 'string' ? selected : (selected as { path?: string })?.path || String(selected);
-                setSettings({ steamlessPath: path });
-            }
-        } catch (error) { addLog("error", `Failed to select file: ${error}`); }
-    };
 
     // Computed Health Status
     const isHealthy =
@@ -359,21 +339,7 @@ export function SystemHealthPanel() {
                         </div>
                     )}
 
-                    {/* Tools Paths */}
-                    <div className="space-y-2 pt-4 border-t border-[#2a475e]">
-                        <Label className="flex items-center gap-2"><FolderOpen className="w-4 h-4" /> Tool Paths</Label>
 
-                        <div className="grid gap-2">
-                            <div className="flex gap-2">
-                                <Input value={settings.depotDownloaderPath || ""} placeholder="DepotDownloaderMod Path" readOnly className="bg-[#0a0a0a] border-[#2a475e] text-xs h-8" />
-                                <Button onClick={handleBrowseDepotDownloader} variant="secondary" size="sm" className="h-8 w-8 p-0"><FolderOpen className="w-3 h-3" /></Button>
-                            </div>
-                            <div className="flex gap-2">
-                                <Input value={settings.steamlessPath || ""} placeholder="Steamless.exe Path" readOnly className="bg-[#0a0a0a] border-[#2a475e] text-xs h-8" />
-                                <Button onClick={handleBrowseSteamless} variant="secondary" size="sm" className="h-8 w-8 p-0"><FolderOpen className="w-3 h-3" /></Button>
-                            </div>
-                        </div>
-                    </div>
                 </CardContent>
             )}
         </Card>

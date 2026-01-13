@@ -243,6 +243,12 @@ export function InstallModal({ isOpen, onClose, game, preExtractedZipPath }: Ins
 
     const targetPath = `${selectedLibrary}/steamapps/common`;
 
+    // Validate DepotDownloader path
+    if (!settings.depotDownloaderPath) {
+      addLog("error", "DepotDownloader path is not configured! Please set it in Settings -> System Health.");
+      return;
+    }
+
     // Inject is_local flag if needed
     const configToUse = { ...sshConfig };
     const { connectionMode } = useAppStore.getState();
