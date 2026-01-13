@@ -95,18 +95,22 @@ pub fn find_wine_installations() -> Vec<WineInstallation> {
         }
     }
 
-    // Sort: prefer Proton Experimental, then newer versions, then system Wine
+    // Sort: prefer System Wine, then Proton Experimental, then newer versions
     installations.sort_by(|a, b| {
+        // 1. Prefer System Wine (!is_proton)
+        if !a.is_proton && b.is_proton {
+            return std::cmp::Ordering::Less;
+        } else if a.is_proton && !b.is_proton {
+            return std::cmp::Ordering::Greater;
+        }
+
+        // 2. Both are Proton (or both System Wine) -> Prefer Experimental
         let a_exp = a.name.to_lowercase().contains("experimental");
         let b_exp = b.name.to_lowercase().contains("experimental");
 
         if a_exp && !b_exp {
             std::cmp::Ordering::Less
         } else if !a_exp && b_exp {
-            std::cmp::Ordering::Greater
-        } else if a.is_proton && !b.is_proton {
-            std::cmp::Ordering::Less
-        } else if !a.is_proton && b.is_proton {
             std::cmp::Ordering::Greater
         } else {
             // Compare version numbers (higher is better)

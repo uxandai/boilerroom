@@ -769,16 +769,99 @@ pub async fn add_fake_app_id(
 //     Ok(format!("Added AppToken for: {}", app_id))
 // }
 
-/// Generate achievements file (placeholder - not implemented)
+/// Generate achievements file for a single app
 #[tauri::command]
 pub async fn generate_achievements(
     app_handle: tauri::AppHandle,
     app_id: String,
+    steam_api_key: String,
+    steam_user_id: String,
 ) -> Result<String, String> {
     let _ = app_handle;
-    // Placeholder - actual achievement generation requires Steam API integration
-    Ok(format!(
-        "Achievement generation not yet implemented for {}",
-        app_id
-    ))
+
+    if steam_api_key.is_empty() {
+        return Err("Steam API Key is required. Configure it in Settings → API Keys".to_string());
+    }
+    if steam_user_id.is_empty() {
+        return Err("Steam User ID is required. Configure it in Settings → API Keys".to_string());
+    }
+
+    let result = crate::achievements::generate_achievement_schema(
+        &app_id,
+        &steam_api_key,
+        &steam_user_id,
+        "english",
+    )
+    .await?;
+
+    Ok(result.message)
+}
+
+/// Generate achievements for all apps in AdditionalApps that don't have schemas
+#[tauri::command]
+pub async fn generate_all_achievements(
+    app_handle: tauri::AppHandle,
+    steam_api_key: String,
+    steam_user_id: String,
+) -> Result<crate::achievements::BatchAchievementResult, String> {
+    let _ = app_handle;
+
+    if steam_api_key.is_empty() {
+        return Err("Steam API Key is required. Configure it in Settings → API Keys".to_string());
+    }
+    if steam_user_id.is_empty() {
+        return Err("Steam User ID is required. Configure it in Settings → API Keys".to_string());
+    }
+
+    let app_ids = crate::achievements::read_additional_apps()?;
+
+    if app_ids.is_empty() {
+        return Ok(crate::achievements::BatchAchievementResult {
+            processed: 0,
+            skipped: 0,
+            errors: 0,
+            messages: vec!["No apps found in AdditionalApps".to_string()],
+        });
+    }
+
+    let mut processed = 0;
+    let mut skipped = 0;
+    let mut errors = 0;
+    let mut messages = Vec::new();
+
+    for app_id in &app_ids {
+        // Skip if schema already exists
+        if crate::achievements::schema_exists(app_id) {
+            skipped += 1;
+            continue;
+        }
+
+        match crate::achievements::generate_achievement_schema(
+            app_id,
+            &steam_api_key,
+            &steam_user_id,
+            "english",
+        )
+        .await
+        {
+            Ok(result) => {
+                processed += 1;
+                messages.push(result.message);
+            }
+            Err(e) => {
+                errors += 1;
+                messages.push(format!("Error for {}: {}", app_id, e));
+            }
+        }
+
+        // Small delay to avoid rate limiting
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    }
+
+    Ok(crate::achievements::BatchAchievementResult {
+        processed,
+        skipped,
+        errors,
+        messages,
+    })
 }

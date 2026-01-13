@@ -170,11 +170,11 @@ export function GameCardModal({
 
         // Check for Steam API key
         if (!settings.steamApiKey) {
-            addLog("error", "Steam API Key not configured. Go to Settings to add it.");
+            alert("Steam API Key not configured.\n\nGo to Settings → API Keys to add it.");
             return;
         }
         if (!settings.steamUserId) {
-            addLog("error", "Steam User ID not configured. Go to Settings to add it.");
+            alert("Steam User ID not configured.\n\nGo to Settings → API Keys to add it.");
             return;
         }
 
@@ -187,8 +187,11 @@ export function GameCardModal({
                 settings.steamUserId
             );
             addLog("info", `Achievements generated for ${game.name}: ${result}`);
+            alert(`✓ Success!\n\n${result}`);
         } catch (e) {
-            addLog("error", `Achievement generation error: ${e}`);
+            const errorMsg = e instanceof Error ? e.message : String(e);
+            addLog("error", `Achievement generation error: ${errorMsg}`);
+            alert(`✗ Failed to generate achievements\n\n${errorMsg}`);
         } finally {
             setIsGeneratingAchievements(false);
         }

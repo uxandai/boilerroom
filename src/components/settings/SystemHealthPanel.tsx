@@ -11,7 +11,8 @@ import {
     Shield,
     ChevronDown,
     ChevronUp,
-    Activity
+    Activity,
+    Trophy
 } from "lucide-react";
 
 
@@ -64,8 +65,16 @@ export function SystemHealthPanel() {
         slssteam: false,
         togglingUpdates: false,
         allowingUpdate: false,
-        fixingLibcurl: false
+        fixingLibcurl: false,
+        achievements: false
     });
+
+    // Achievements state
+    const [achievementsResult, setAchievementsResult] = useState<{
+        processed: number;
+        skipped: number;
+        errors: number;
+    } | null>(null);
 
     // Auto-check on mount
     useEffect(() => {
@@ -184,6 +193,70 @@ export function SystemHealthPanel() {
         finally { setLoading(prev => ({ ...prev, fixingLibcurl: false })); }
     };
 
+    const handleGenerateAchievements = async () => {
+        setLoading(prev => ({ ...prev, achievements: true }));
+        setAchievementsResult(null);
+        try {
+            const { generateAllAchievements } = await import("@/lib/api/misc");
+            const { settings } = useAppStore.getState();
+
+            if (!settings.steamApiKey) {
+                alert("Steam Web API Key is required.\n\nConfigure it in Settings → API Keys");
+                return;
+            }
+            if (!settings.steamUserId) {
+                alert("Steam User ID is required.\n\nConfigure it in Settings → API Keys");
+                return;
+            }
+
+            const result = await generateAllAchievements(settings.steamApiKey, settings.steamUserId);
+            setAchievementsResult({
+                processed: result.processed,
+                skipped: result.skipped,
+                errors: result.errors
+            });
+
+            if (result.processed > 0) {
+                addLog("info", `Generated achievements for ${result.processed} games`);
+            }
+            if (result.errors > 0) {
+                addLog("warn", `Failed to generate achievements for ${result.errors} games`);
+            }
+
+            // Build detailed summary dialog
+            const lines: string[] = [];
+            if (result.processed > 0 || result.skipped > 0 || result.errors > 0) {
+                lines.push(`Summary:`);
+                lines.push(`✓ Generated: ${result.processed}`);
+                if (result.skipped > 0) lines.push(`• Skipped: ${result.skipped} (already exist)`);
+                if (result.errors > 0) lines.push(`✗ Errors: ${result.errors}`);
+                lines.push("");
+
+                // Add first 10 messages as details
+                const details = result.messages.slice(0, 10);
+                if (details.length > 0) {
+                    lines.push("Details:");
+                    details.forEach(msg => lines.push(`  ${msg}`));
+                    if (result.messages.length > 10) {
+                        lines.push(`  ... and ${result.messages.length - 10} more (see logs)`);
+                    }
+                }
+            } else {
+                lines.push("No games to process.");
+                if (result.messages.length > 0) {
+                    lines.push(result.messages[0]);
+                }
+            }
+
+            alert(lines.join("\n"));
+        } catch (e) {
+            const errorMsg = e instanceof Error ? e.message : String(e);
+            addLog("error", `Achievement generation failed: ${errorMsg}`);
+            alert(`✗ Achievement generation failed\n\n${errorMsg}`);
+        }
+        finally { setLoading(prev => ({ ...prev, achievements: false })); }
+    };
+
 
 
     // Computed Health Status
@@ -298,6 +371,47 @@ export function SystemHealthPanel() {
                                     )}
                                 </div>
                             )}
+                        </div>
+                    </div>
+
+                    {/* Achievements Generation */}
+                    <div className="space-y-2 pt-4 border-t border-[#2a475e]">
+                        <div className="flex justify-between items-center text-sm font-medium text-gray-300">
+                            <span className="flex items-center gap-2"><Trophy className="w-4 h-4 text-yellow-500" /> Achievements</span>
+                        </div>
+
+                        <div className="bg-[#0a0a0a] p-3 rounded border border-[#2a475e]">
+                            <div className="flex justify-between items-center">
+                                <div className="text-sm">
+                                    <div className="text-gray-300">Generate achievement schemas for AdditionalApps</div>
+                                    <div className="text-xs text-gray-500 mt-1">
+                                        Creates schema files for games that don't have achievements yet
+                                    </div>
+                                    {achievementsResult && (
+                                        <div className="text-xs mt-2 space-y-0.5">
+                                            <div className="text-green-400">✓ {achievementsResult.processed} generated</div>
+                                            {achievementsResult.skipped > 0 && (
+                                                <div className="text-gray-500">• {achievementsResult.skipped} skipped (already exist)</div>
+                                            )}
+                                            {achievementsResult.errors > 0 && (
+                                                <div className="text-red-400">✗ {achievementsResult.errors} errors</div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    className="h-8 text-xs"
+                                    onClick={handleGenerateAchievements}
+                                    disabled={loading.achievements}
+                                >
+                                    {loading.achievements ? (
+                                        <><RefreshCw className="w-3 h-3 animate-spin mr-1" /> Generating...</>
+                                    ) : (
+                                        <>Generate</>)}
+                                </Button>
+                            </div>
                         </div>
                     </div>
 

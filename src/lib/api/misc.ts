@@ -51,12 +51,26 @@ export async function checkMorrenusApiStatus(apiKey: string): Promise<MorrenusAp
 }
 
 // Achievement Generation
+export interface BatchAchievementResult {
+    processed: number;
+    skipped: number;
+    errors: number;
+    messages: string[];
+}
+
 export async function generateAchievements(
     appId: string,
     steamApiKey: string,
     steamUserId: string
 ): Promise<string> {
     return invoke<string>("generate_achievements", { appId, steamApiKey, steamUserId });
+}
+
+export async function generateAllAchievements(
+    steamApiKey: string,
+    steamUserId: string
+): Promise<BatchAchievementResult> {
+    return invoke<BatchAchievementResult>("generate_all_achievements", { steamApiKey, steamUserId });
 }
 
 // SteamCMD Integration

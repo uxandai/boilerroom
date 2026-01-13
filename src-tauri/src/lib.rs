@@ -1,3 +1,4 @@
+mod achievements;
 mod commands;
 mod config_vdf;
 mod install_manager;
@@ -141,6 +142,7 @@ pub fn run() {
             add_fake_app_id,
             // add_app_token, // NOTE: AppTokens functionality disabled
             generate_achievements,
+            generate_all_achievements,
             // SteamCMD integration
             steamcmd_get_app_info,
             // Setup wizard commands
