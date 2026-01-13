@@ -53,7 +53,7 @@ export function ModeSelectionScreen({ onModeSelected }: ModeSelectionScreenProps
   if (isDetecting) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8">
-        <img src="/logo.png" alt="TonTonDeck" className="h-64 w-auto mb-2 mix-blend-screen" />
+        <img src="/logo.png" alt="BoilerRoom" className="h-64 w-auto mb-2 mix-blend-screen" />
         <Loader2 className="w-8 h-8 text-[#67c1f5] animate-spin mb-4" />
         <p className="text-muted-foreground">Detecting platform...</p>
       </div>
@@ -64,7 +64,7 @@ export function ModeSelectionScreen({ onModeSelected }: ModeSelectionScreenProps
   if (detectedAsSteamDeck) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8">
-        <img src="/logo.png" alt="TonTonDeck" className="h-64 w-auto mb-2 mix-blend-screen" />
+        <img src="/logo.png" alt="BoilerRoom" className="h-64 w-auto mb-2 mix-blend-screen" />
         <div className="bg-[#2a4c28] border border-[#408f40] rounded-lg p-6 max-w-md text-center">
           <Sparkles className="w-12 h-12 text-green-400 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-white mb-2">Steam Deck Detected! 🎮</h2>
@@ -89,7 +89,7 @@ export function ModeSelectionScreen({ onModeSelected }: ModeSelectionScreenProps
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8 relative">
       {/* Logo */}
       <div className="mb-0">
-        <img src="/logo.png" alt="TonTonDeck" className="h-64 w-auto mix-blend-screen" />
+        <img src="/logo.png" alt="BoilerRoom" className="h-64 w-auto mix-blend-screen" />
       </div>
 
       <h1 className="text-2xl font-bold text-white mb-2">Select Operating Mode</h1>
@@ -164,7 +164,7 @@ export function ModeSelectionScreen({ onModeSelected }: ModeSelectionScreenProps
       </div>
 
       <p className="text-xs text-muted-foreground mt-8 text-center">
-        TonTonDeck is an independent project. Not affiliated with or supported by Valve/Steam, Morrenus, SLSsteam, Steamless :wink:<br />Used for copying files you have legal rights to. Do not use for license/rights violations or bypassing protections.
+        BoilerRoom is an independent project. Not affiliated with or supported by Valve/Steam, Morrenus, SLSsteam, Steamless :wink:<br />Used for copying files you have legal rights to. Do not use for license/rights violations or bypassing protections.
       </p>
     </div>
   );

@@ -203,7 +203,7 @@ function App() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="animate-pulse">
-          <img src="/logo.png" alt="TonTonDeck" className="h-24 w-auto opacity-50 mix-blend-screen" />
+          <img src="/logo.png" alt="BoilerRoom" className="h-24 w-auto opacity-50 mix-blend-screen" />
         </div>
       </div>
     );
@@ -225,7 +225,7 @@ function App() {
         <header data-tauri-drag-region className="bg-[#171a21] border-b border-[#0a0a0a] px-4 py-3 select-none cursor-move">
           <div className="flex items-center justify-between pointer-events-none">
             <div className="flex items-center gap-3 pointer-events-auto">
-              <img src="/logo.png" alt="TonTonDeck" className="h-12 w-auto mix-blend-screen" />
+              <img src="/logo.png" alt="BoilerRoom" className="h-12 w-auto mix-blend-screen" />
             </div>
             <div className="flex items-center gap-3 pointer-events-auto">
               <ApiStatus />

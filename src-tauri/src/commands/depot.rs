@@ -66,7 +66,7 @@ pub async fn extract_manifest_zip(zip_path: String) -> Result<GameManifestData, 
 
     // Create temp extraction directory
     let temp_dir = std::env::temp_dir().join(format!(
-        "tontondeck_extract_{}",
+        "boilerroom_extract_{}",
         chrono::Utc::now().timestamp()
     ));
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("Failed to create temp dir: {}", e))?;
@@ -477,7 +477,7 @@ pub async fn run_depot_downloader(
 
     // Create keys file with depot key
     let temp_dir = std::env::temp_dir();
-    let keys_file = temp_dir.join("tontondeck_depot_keys.txt");
+    let keys_file = temp_dir.join("boilerroom_depot_keys.txt");
     std::fs::write(&keys_file, format!("{};{}\n", depot_id, depot_key))
         .map_err(|e| format!("Failed to write keys file: {}", e))?;
 
@@ -542,7 +542,7 @@ pub async fn cleanup_temp_files(app_id: String) -> Result<(), String> {
     let temp_dir = std::env::temp_dir();
 
     // Clean up downloaded ZIP
-    let zip_path = temp_dir.join(format!("tontondeck_{}.zip", app_id));
+    let zip_path = temp_dir.join(format!("boilerroom_{}.zip", app_id));
     if zip_path.exists() {
         std::fs::remove_file(&zip_path).ok();
     }
@@ -553,7 +553,7 @@ pub async fn cleanup_temp_files(app_id: String) -> Result<(), String> {
             let path = entry.path();
             if path.is_dir() {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                    if name.starts_with("tontondeck_extract_") {
+                    if name.starts_with("boilerroom_extract_") {
                         std::fs::remove_dir_all(&path).ok();
                     }
                 }
@@ -562,7 +562,7 @@ pub async fn cleanup_temp_files(app_id: String) -> Result<(), String> {
     }
 
     // Clean up depot keys file
-    let keys_file = temp_dir.join("tontondeck_depot_keys.txt");
+    let keys_file = temp_dir.join("boilerroom_depot_keys.txt");
     if keys_file.exists() {
         std::fs::remove_file(&keys_file).ok();
     }

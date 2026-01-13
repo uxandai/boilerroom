@@ -1,12 +1,12 @@
 [package]
-name = "tontondeck"
+name = "boilerroom"
 version = "1.1.0"
-description = "Manager pakietów dla Steam Deck"
-authors = ["TonTonDeck Team"]
+description = "Steam Deck game manager"
+authors = ["BoilerRoom Team"]
 edition = "2021"
 
 [lib]
-name = "tontondeck_lib"
+name = "boilerroom_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

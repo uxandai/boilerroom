@@ -1,4 +1,4 @@
-app-id: com.tontondeck.app
+app-id: com.boilerroom.app
 runtime: org.gnome.Platform
 runtime-version: '46'
 sdk: org.gnome.Sdk
@@ -6,7 +6,7 @@ sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
   - org.freedesktop.Sdk.Extension.node20
 
-command: tontondeck
+command: boilerroom
 
 finish-args:
   - --share=ipc
@@ -21,11 +21,11 @@ finish-args:
 build-options:
   append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
   env:
-    CARGO_HOME: /run/build/tontondeck/cargo
+    CARGO_HOME: /run/build/boilerroom/cargo
     npm_config_nodedir: /usr/lib/sdk/node20
 
 modules:
-  - name: tontondeck
+  - name: boilerroom
     buildsystem: simple
     build-commands:
       # Install npm dependencies
@@ -35,14 +35,14 @@ modules:
       # Build Tauri app
       - cd src-tauri && cargo build --release
       # Install binary
-      - install -Dm755 src-tauri/target/release/tontondeck /app/bin/tontondeck
+      - install -Dm755 src-tauri/target/release/boilerroom /app/bin/boilerroom
       # Install icons
-      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.tontondeck.app.png
-      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.tontondeck.app.png
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.boilerroom.app.png
+      - install -Dm644 src-tauri/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.boilerroom.app.png
       # Install desktop file
-      - install -Dm644 flatpak/com.tontondeck.app.desktop /app/share/applications/com.tontondeck.app.desktop
+      - install -Dm644 flatpak/com.boilerroom.app.desktop /app/share/applications/com.boilerroom.app.desktop
       # Install metainfo
-      - install -Dm644 flatpak/com.tontondeck.app.metainfo.xml /app/share/metainfo/com.tontondeck.app.metainfo.xml
+      - install -Dm644 flatpak/com.boilerroom.app.metainfo.xml /app/share/metainfo/com.boilerroom.app.metainfo.xml
     sources:
       - type: dir
         path: ..

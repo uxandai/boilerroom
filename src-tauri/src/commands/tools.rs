@@ -55,7 +55,7 @@ pub async fn launch_steamless_via_wine(steamless_exe_path: String) -> Result<Str
 
         eprintln!("[Steamless] Using Wine: {:?}", wine_path);
 
-        let prefix = home.join(".local/share/tontondeck/steamless/pfx");
+        let prefix = home.join(".local/share/boilerroom/steamless/pfx");
         std::fs::create_dir_all(&prefix)
             .map_err(|e| format!("Failed to create Wine prefix: {}", e))?;
 

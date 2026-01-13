@@ -1,11 +1,11 @@
 #!/bin/bash
-# TonTonDeck - Setup Script for Steam Deck / Linux
+# BoilerRoom - Setup Script for Steam Deck / Linux
 # Run this script in Desktop Mode
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APPIMAGE_NAME="TonTonDeck_1.0.0_amd64.AppImage"
+APPIMAGE_NAME="BoilerRoom_1.0.0_amd64.AppImage"
 INSTALL_DIR="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons"
@@ -13,7 +13,7 @@ SLSSTEAM_DIR="$HOME/.local/share/SLSsteam"
 SLSSTEAM_CONFIG_DIR="$HOME/.config/SLSsteam"
 
 echo "╔═══════════════════════════════════════════════════════╗"
-echo "║              TonTonDeck Setup 🎮                      ║"
+echo "║              BoilerRoom Setup 🎮                      ║"
 echo "╚═══════════════════════════════════════════════════════╝"
 echo ""
 
@@ -81,13 +81,13 @@ fi
 # Step 4: Clean WebKit cache (prevents white screen issues)
 echo ""
 echo "🗑️  Cleaning WebKit cache..."
-rm -rf "$HOME/.cache/TonTonDeck" 2>/dev/null
-rm -rf "$HOME/.cache/com.tontondeck.app" 2>/dev/null
+rm -rf "$HOME/.cache/BoilerRoom" 2>/dev/null
+rm -rf "$HOME/.cache/com.boilerroom.app" 2>/dev/null
 echo "   ✅ Cache cleared"
 
 # Step 5: Install AppImage
 echo ""
-echo "📦 Installing TonTonDeck..."
+echo "📦 Installing BoilerRoom..."
 
 # Create directories if needed
 mkdir -p "$INSTALL_DIR"
@@ -113,7 +113,7 @@ fi
 # Step 6: Extract icon from AppImage
 echo ""
 echo "🎨 Extracting application icon..."
-ICON_PATH="$ICON_DIR/tontondeck.png"
+ICON_PATH="$ICON_DIR/boilerroom.png"
 
 # Try to extract icon from AppImage
 cd "$INSTALL_DIR"
@@ -134,23 +134,23 @@ if [ ! -f "$ICON_PATH" ]; then
     ICON_PATH="steam"
 fi
 
-# Step 7: Create desktop entry for TonTonDeck
+# Step 7: Create desktop entry for BoilerRoom
 echo ""
 echo "🖥️  Creating menu shortcut..."
 
-cat > "$DESKTOP_DIR/tontondeck.desktop" << EOF
+cat > "$DESKTOP_DIR/boilerroom.desktop" << EOF
 [Desktop Entry]
-Name=TonTonDeck
+Name=BoilerRoom
 Comment=Install games on Steam Deck
-Exec=$INSTALL_DIR/$APPIMAGE_NAME
+Exec=env WEBKIT_DISABLE_COMPOSITING_MODE=1 $INSTALL_DIR/$APPIMAGE_NAME
 Icon=$ICON_PATH
 Type=Application
 Categories=Game;Utility;
 Terminal=false
-StartupWMClass=TonTonDeck
+StartupWMClass=BoilerRoom
 EOF
 
-chmod +x "$DESKTOP_DIR/tontondeck.desktop"
+chmod +x "$DESKTOP_DIR/boilerroom.desktop"
 echo "   ✅ Shortcut created in application menu"
 
 # Update desktop database
@@ -370,7 +370,7 @@ EOF
 else
     echo ""
     echo "   ℹ️ Skipped SLSsteam installation"
-    echo "   You can install it later through TonTonDeck"
+    echo "   You can install it later through BoilerRoom"
 fi
 
 # Get IP address if SSH was enabled
@@ -391,16 +391,16 @@ echo "╔═══════════════════════�
 echo "║              🎉 Installation Complete!                ║"
 echo "╠═══════════════════════════════════════════════════════╣"
 echo "║                                                       ║"
-echo "║  1. Launch TonTonDeck from Start menu                 ║"
+echo "║  1. Launch BoilerRoom from Start menu                 ║"
 echo "║     (Category: All, Games, or Utilities)              ║"
 echo "║                                                       ║"
-echo "║  2. You can also add TonTonDeck in Gaming Mode        ║"
+echo "║  2. You can also add BoilerRoom in Gaming Mode        ║"
 echo "║     Steam → Add Game → Add Non-Steam Game             ║"
 echo "║                                                       ║"
 if [ "$SSH_ENABLED" = true ] && [ -n "$IP_ADDR" ]; then
 echo "║  3. Your IP address for remote connection:            ║"
 echo "║     📡 $IP_ADDR                                       ║"
-echo "║     (Use this in TonTonDeck on your PC)               ║"
+echo "║     (Use this in BoilerRoom on your PC)               ║"
 echo "║                                                       ║"
 fi
 if [ "$SLSSTEAM_INSTALLED" = true ]; then

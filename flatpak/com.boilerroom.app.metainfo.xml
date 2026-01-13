@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.tontondeck.app</id>
-  <name>TonTonDeck</name>
-  <summary>Manager pakietów dla Steam Deck</summary>
+  <id>com.boilerroom.app</id>
+  <name>BoilerRoom</name>
+  <summary>Steam Deck game manager</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <description>
     <p>
-      TonTonDeck is a package manager for Steam Deck that helps you manage
+      BoilerRoom is a game manager for Steam Deck that helps you manage
       and install games and applications.
     </p>
   </description>
-  <launchable type="desktop-id">com.tontondeck.app.desktop</launchable>
-  <url type="homepage">https://github.com/tontondeck/tontondeck</url>
+  <launchable type="desktop-id">com.boilerroom.app.desktop</launchable>
+  <url type="homepage">https://github.com/boilerroom/boilerroom</url>
   <provides>
-    <binary>tontondeck</binary>
+    <binary>boilerroom</binary>
   </provides>
   <content_rating type="oars-1.1" />
   <releases>

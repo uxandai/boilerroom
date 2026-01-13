@@ -328,6 +328,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "boilerroom"
+version = "1.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "crossbeam-channel",
+ "dirs",
+ "futures",
+ "keyvalues-parser",
+ "keyvalues-serde",
+ "notify",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sevenz-rust",
+ "shellexpand",
+ "ssh2",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tauri-plugin-process",
+ "tauri-plugin-store",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "urlencoding",
+ "walkdir",
+ "zip",
+]
+
+[[package]]
 name = "brotli"
 version = "8.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4864,40 +4898,6 @@ name = "toml_writer"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df8b2b54733674ad286d16267dcfc7a71ed5c776e4ac7aa3c3e2561f7c637bf2"
-
-[[package]]
-name = "tontondeck"
-version = "1.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "crossbeam-channel",
- "dirs",
- "futures",
- "keyvalues-parser",
- "keyvalues-serde",
- "notify",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "serde_yaml",
- "sevenz-rust",
- "shellexpand",
- "ssh2",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tauri-plugin-process",
- "tauri-plugin-store",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "urlencoding",
- "walkdir",
- "zip",
-]
 
 [[package]]
 name = "tower"

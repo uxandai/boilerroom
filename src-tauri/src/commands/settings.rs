@@ -45,7 +45,7 @@ pub fn get_api_key_internal(app_handle: &tauri::AppHandle) -> Result<String, Str
 /// Get the path to the cached SLSsteam.so file
 pub fn get_slssteam_cache_dir() -> Result<PathBuf, String> {
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
-    let cache_dir = home.join(".cache/tontondeck/slssteam");
+    let cache_dir = home.join(".cache/boilerroom/slssteam");
     std::fs::create_dir_all(&cache_dir)
         .map_err(|e| format!("Failed to create cache dir: {}", e))?;
     Ok(cache_dir)
@@ -98,7 +98,7 @@ struct GitHubRelease {
 pub async fn fetch_latest_slssteam() -> Result<String, String> {
     // 1. Get latest release info from GitHub API
     let client = reqwest::Client::builder()
-        .user_agent("TontonDeck/1.0")
+        .user_agent("BoilerRoom/1.0")
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 

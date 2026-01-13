@@ -62,7 +62,7 @@ export function SetupWizard() {
                 <DialogHeader>
                     <DialogTitle className="text-white flex items-center gap-2">
                         <Rocket className="w-6 h-6 text-[#67c1f5]" />
-                        TonTonDeck Setup
+                        BoilerRoom Setup
                     </DialogTitle>
                     <DialogDescription>
                         {!setupState && !result && (

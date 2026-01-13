@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "TonTonDeck",
+  "productName": "BoilerRoom",
   "version": "1.0.0",
-  "identifier": "com.tontondeck.app",
+  "identifier": "com.boilerroom.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "TonTonDeck",
+        "title": "BoilerRoom",
         "width": 1280,
         "height": 800,
         "minWidth": 800,
@@ -28,7 +28,7 @@
       "assetProtocol": {
         "enable": true,
         "scope": [
-          "$HOME/.cache/tontondeck/**",
+          "$HOME/.cache/boilerroom/**",
           "**"
         ]
       }

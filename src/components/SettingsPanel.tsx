@@ -242,7 +242,7 @@ export function SettingsPanel() {
 
       {/* Info */}
       <div className="text-sm text-muted-foreground text-center">
-        <p>TonTonDeck v1.0.0</p>
+        <p>BoilerRoom v1.0.0</p>
       </div>
 
     </div>

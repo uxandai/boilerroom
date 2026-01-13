@@ -1,8 +1,8 @@
 [Desktop Entry]
-Name=TonTonDeck
-Comment=Manager pakietów dla Steam Deck
-Exec=tontondeck
-Icon=com.tontondeck.app
+Name=BoilerRoom
+Comment=Steam Deck game manager
+Exec=boilerroom
+Icon=com.boilerroom.app
 Terminal=false
 Type=Application
 Categories=Utility;Game;

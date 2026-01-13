@@ -304,7 +304,7 @@ pub async fn fetch_steamgriddb_artwork(
 pub fn get_artwork_cache_dir() -> Result<PathBuf, String> {
     let cache_dir = dirs::cache_dir()
         .ok_or("Failed to find cache directory")?
-        .join("tontondeck")
+        .join("boilerroom")
         .join("artwork");
 
     std::fs::create_dir_all(&cache_dir)
@@ -423,7 +423,7 @@ pub async fn download_bundle(
 
     // Save to temp file
     let temp_dir = std::env::temp_dir();
-    let file_path = temp_dir.join(format!("tontondeck_{}.zip", app_id));
+    let file_path = temp_dir.join(format!("boilerroom_{}.zip", app_id));
 
     let bytes = response
         .bytes()

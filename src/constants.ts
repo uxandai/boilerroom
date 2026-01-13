@@ -2,7 +2,7 @@
  * Application Constants
  */
 
-export const APP_NAME = "TonTonDeck";
+export const APP_NAME = "BoilerRoom";
 export const APP_VERSION = "1.0.0";
 
 export const API = {

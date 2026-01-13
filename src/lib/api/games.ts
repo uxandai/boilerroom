@@ -12,7 +12,7 @@ export interface InstalledGame {
     name: string;
     path: string;
     size_bytes: number;
-    has_depotdownloader_marker: boolean; // true if installed by TonTonDeck/ACCELA
+    has_depotdownloader_marker: boolean; // true if installed by BoilerRoom/ACCELA
     header_image?: string;
 }
 

@@ -256,7 +256,7 @@ impl InstallManager {
             path
         } else {
             // Use /var/tmp instead of /tmp - /var/tmp is always persistent disk, not tmpfs RAM
-            let temp = PathBuf::from("/var/tmp").join(format!("tontondeck_install_{}", app_id));
+            let temp = PathBuf::from("/var/tmp").join(format!("boilerroom_install_{}", app_id));
             if temp.exists() {
                 std::fs::remove_dir_all(&temp).map_err(|e| e.to_string())?;
             }

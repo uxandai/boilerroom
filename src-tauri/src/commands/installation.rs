@@ -33,7 +33,7 @@ pub async fn start_pipelined_install(
 
     // Generate depot keys file in temp dir (like Accela)
     let temp_dir = std::env::temp_dir();
-    let keys_file = temp_dir.join("tontondeck_depot_keys.txt");
+    let keys_file = temp_dir.join("boilerroom_depot_keys.txt");
     let mut keys_content = String::new();
     for (depot_id, key) in &depot_keys {
         keys_content.push_str(&format!("{};{}\n", depot_id, key));

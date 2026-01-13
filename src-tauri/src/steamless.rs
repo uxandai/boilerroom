@@ -120,7 +120,7 @@ pub fn find_wine_installations() -> Vec<WineInstallation> {
 /// Get or create the Steamless Wine prefix directory
 pub fn get_steamless_prefix() -> PathBuf {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
-    let prefix = home.join(".local/share/tontondeck/steamless/pfx");
+    let prefix = home.join(".local/share/boilerroom/steamless/pfx");
 
     if let Err(e) = fs::create_dir_all(&prefix) {
         eprintln!("[Steamless] Failed to create prefix directory: {}", e);

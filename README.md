@@ -1,10 +1,10 @@
-# TonTonDeck
+# BoilerRoom
 
 > **⚠️ WORK IN PROGRESS** - No releases yet! You can compile and test yourself, but it's not fully tested. Use at your own risk.
 
 Steam Deck Package Manager - A cross-platform Tauri v2 desktop application for managing game installations on Steam Deck using the Morrenus API.
 
-![TonTonDeck Screenshot](screenshot.png)
+![BoilerRoom Screenshot](screenshot.png)
 
 ---
 
@@ -42,7 +42,7 @@ Steam Deck Package Manager - A cross-platform Tauri v2 desktop application for m
 
 ## How It Works
 
-TonTonDeck orchestrates game installations through a multi-stage pipeline:
+BoilerRoom orchestrates game installations through a multi-stage pipeline:
 
 ### Installation Pipeline
 
@@ -105,19 +105,19 @@ For users who want Steam to handle the download:
 
 ### On Steam Deck (Local Mode)
 
-1. Download the AppImage and `tontondeck-setup.sh` to your Deck
+1. Download the AppImage and `boilerroom-setup.sh` to your Deck
 2. Run the setup script:
    ```bash
-   chmod +x tontondeck-setup.sh
-   ./tontondeck-setup.sh
+   chmod +x boilerroom-setup.sh
+   ./boilerroom-setup.sh
    ```
-3. Launch TonTonDeck from the application menu
+3. Launch BoilerRoom from the application menu
 
 ### On PC (Remote Mode)
 
-1. Build or download TonTonDeck for your platform
-2. Run `tontondeck-setup.sh` on your Steam Deck (enables SSH, installs SLSsteam)
-3. Configure SSH connection in TonTonDeck Settings
+1. Build or download BoilerRoom for your platform
+2. Run `boilerroom-setup.sh` on your Steam Deck (enables SSH, installs SLSsteam)
+3. Configure SSH connection in BoilerRoom Settings
 4. Search and install - games are transferred automatically
 
 ---
@@ -164,7 +164,7 @@ Search for any game, download the manifests and files, deploy to Steam Deck. SLS
 
 ### 2. Transfer Locally Installed Games
 
-Already have games on your PC? Use the Library tab to copy them to your Steam Deck via rsync. TonTonDeck handles:
+Already have games on your PC? Use the Library tab to copy them to your Steam Deck via rsync. BoilerRoom handles:
 - File transfer with progress reporting
 - ACF manifest creation
 - SLSsteam configuration
@@ -232,7 +232,7 @@ The backend is organized into **13 command modules**:
 
 ## Steam Configuration Files
 
-TonTonDeck manipulates several Steam configuration files:
+BoilerRoom manipulates several Steam configuration files:
 
 ### `config.vdf` - Depot Decryption Keys
 
@@ -251,7 +251,7 @@ Steam's main configuration file stores depot decryption keys:
 }
 ```
 
-**What TonTonDeck does:**
+**What BoilerRoom does:**
 - Parses existing `config.vdf`
 - Injects new depot keys without duplicates
 - Finds the `"depots"` section or creates it
@@ -299,7 +299,7 @@ Parsed to find all Steam library locations:
 
 ### SLSsteam `config.yaml`
 
-TonTonDeck manages the SLSsteam configuration:
+BoilerRoom manages the SLSsteam configuration:
 
 ```yaml
 PlayNotOwnedGames: yes
@@ -348,7 +348,7 @@ sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget \
 ## Project Structure
 
 ```
-tontondeck/
+boilerroom/
 ├── src/                          # React frontend
 │   ├── components/
 │   │   ├── SearchPanel.tsx       # Game search UI
@@ -375,7 +375,7 @@ tontondeck/
 │   │   └── depots.ini            # Known depot names (5.7MB)
 │   └── Cargo.toml
 │
-├── tontondeck-setup.sh           # Steam Deck setup script
+├── boilerroom-setup.sh           # Steam Deck setup script
 ├── 7zz                           # Bundled 7-Zip extractor
 └── deps/                         # Bundled dependencies
 ```
@@ -384,7 +384,7 @@ tontondeck/
 
 ## Steam Deck Setup Script
 
-The `tontondeck-setup.sh` script automates Steam Deck configuration:
+The `boilerroom-setup.sh` script automates Steam Deck configuration:
 
 | Step | Description |
 |------|-------------|
@@ -408,7 +408,7 @@ The `tontondeck-setup.sh` script automates Steam Deck configuration:
 2. **Ownership Spoofing**: Fakes game ownership checks
 3. **Gaming Mode**: Games appear in Steam's Gaming Mode UI
 
-### TonTonDeck's SLSsteam Features
+### BoilerRoom's SLSsteam Features
 
 - **Auto-fetch**: Downloads latest release from GitHub
 - **Auto-install**: Copies to `~/.local/share/SLSsteam/`

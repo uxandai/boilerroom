@@ -27,9 +27,9 @@ export function LibraryPanel() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [artworkMap, setArtworkMap] = useState<Map<string, string>>(new Map());
-  const [showOnlyTonTonDeck, setShowOnlyTonTonDeck] = useState<boolean>(() => {
+  const [showOnlyBoilerRoom, setShowOnlyBoilerRoom] = useState<boolean>(() => {
     // Load saved preference from localStorage
-    const saved = localStorage.getItem("libraryFilterTonTonDeck");
+    const saved = localStorage.getItem("libraryFilterBoilerRoom");
     return saved !== null ? saved === "true" : true; // Default to true
   });
   // State for Copy to Remote modal
@@ -216,7 +216,7 @@ export function LibraryPanel() {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle className="text-white">Installed Games</CardTitle>
-              <CardDescription>List of Steam games {showOnlyTonTonDeck ? "installed by TonTonDeck" : "in your library"}</CardDescription>
+              <CardDescription>List of Steam games {showOnlyBoilerRoom ? "installed by BoilerRoom" : "in your library"}</CardDescription>
             </div>
             <Button
               variant="outline"
@@ -234,17 +234,17 @@ export function LibraryPanel() {
           {/* Filter checkbox */}
           <div className="flex items-center gap-2 mt-2">
             <Checkbox
-              id="filter-tontondeck"
-              checked={showOnlyTonTonDeck}
+              id="filter-boilerroom"
+              checked={showOnlyBoilerRoom}
               disabled={isLoading}
               onCheckedChange={(checked) => {
                 const value = Boolean(checked);
-                setShowOnlyTonTonDeck(value);
-                localStorage.setItem("libraryFilterTonTonDeck", String(value));
+                setShowOnlyBoilerRoom(value);
+                localStorage.setItem("libraryFilterBoilerRoom", String(value));
               }}
             />
-            <Label htmlFor="filter-tontondeck" className="text-sm text-muted-foreground cursor-pointer">
-              Show only TonTonDeck-installed games
+            <Label htmlFor="filter-boilerroom" className="text-sm text-muted-foreground cursor-pointer">
+              Show only BoilerRoom-installed games
             </Label>
           </div>
         </CardHeader>
@@ -274,7 +274,7 @@ export function LibraryPanel() {
             <div className="space-y-2">
               {[...games]
                 .sort((a, b) => a.name.localeCompare(b.name))
-                .filter(game => !showOnlyTonTonDeck || game.has_depotdownloader_marker)
+                .filter(game => !showOnlyBoilerRoom || game.has_depotdownloader_marker)
                 .map((game) => (
                   <div
                     key={game.app_id !== "unknown" ? game.app_id : game.path}
