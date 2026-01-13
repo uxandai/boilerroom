@@ -226,3 +226,29 @@ export async function installDepotKeysOnly(
         triggerSteamInstall
     });
 }
+
+// Steamless full pipeline result
+export interface SteamlessResult {
+    success: boolean;
+    message: string;
+    processed_file?: string;
+}
+
+/**
+ * Apply Steamless to a game directory to remove DRM.
+ * Uses Wine/Proton on Linux to run Steamless.CLI.exe on the main game executable.
+ * 
+ * @param gamePath - Path to the installed game directory
+ * @param steamlessCliPath - Path to Steamless.CLI.exe
+ * @returns Result with success status and message
+ */
+export async function applySteamlessToGame(
+    gamePath: string,
+    steamlessCliPath: string
+): Promise<SteamlessResult> {
+    return invoke<SteamlessResult>("apply_steamless_to_game", {
+        gamePath,
+        steamlessCliPath
+    });
+}
+

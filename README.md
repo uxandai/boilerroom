@@ -8,6 +8,17 @@ Steam Deck Package Manager - A cross-platform Tauri v2 desktop application for m
 
 ---
 
+## ⚠️ Important Notice
+
+This software is intended for **educational and personal use**. Users are responsible for:
+
+- Respecting Steam Terms of Service
+- Only downloading content they legally own
+- Not distributing copyrighted content
+- **Linux-only** — Will not work on Windows or macOS due to SLSsteam dependencies
+
+---
+
 ## Table of Contents
 
 - [Features](#features)

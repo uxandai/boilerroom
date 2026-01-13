@@ -213,3 +213,70 @@ pub async fn run_steamless(steamless_path: String, exe_path: String) -> Result<S
         Ok(format!("Steamless ran but no DRM found in: {}", exe_path))
     }
 }
+
+/// Result of Steamless processing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SteamlessResult {
+    pub success: bool,
+    pub message: String,
+    pub processed_file: Option<String>,
+}
+
+/// Apply Steamless to a game directory using Wine/Proton
+/// This is the full pipeline: find Wine, check .NET, run on largest exe
+#[tauri::command]
+pub async fn apply_steamless_to_game(
+    game_path: String,
+    steamless_cli_path: String,
+) -> Result<SteamlessResult, String> {
+    use crate::steamless::process_game_with_steamless;
+    use std::path::PathBuf;
+    use std::sync::{Arc, Mutex};
+
+    // Verify paths exist
+    let game_dir = PathBuf::from(&game_path);
+    let steamless_path = PathBuf::from(&steamless_cli_path);
+
+    if !game_dir.exists() {
+        return Err(format!("Game directory not found: {}", game_path));
+    }
+
+    if !steamless_path.exists() {
+        return Err(format!(
+            "Steamless.CLI.exe not found at: {}",
+            steamless_cli_path
+        ));
+    }
+
+    // Collect progress messages
+    let messages: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+    let messages_clone = messages.clone();
+
+    // Run the full steamless pipeline (blocking because Wine interaction)
+    let result = tokio::task::spawn_blocking(move || {
+        process_game_with_steamless(&game_dir, &steamless_path, |msg| {
+            eprintln!("[Steamless] {}", msg);
+            if let Ok(mut msgs) = messages_clone.lock() {
+                msgs.push(msg.to_string());
+            }
+        })
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?;
+
+    let final_messages = messages.lock().unwrap().join("\n");
+
+    match result {
+        Ok(drm_removed) => Ok(SteamlessResult {
+            success: true,
+            message: if drm_removed {
+                format!("DRM removed successfully!\n{}", final_messages)
+            } else {
+                format!("Steamless completed, no DRM detected.\n{}", final_messages)
+            },
+            processed_file: None,
+        }),
+        Err(e) => Err(format!("Steamless failed: {}\n{}", e, final_messages)),
+    }
+}
+

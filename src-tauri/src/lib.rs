@@ -88,6 +88,7 @@ pub fn run() {
             // Steamless commands
             find_game_executables,
             run_steamless,
+            apply_steamless_to_game,
             // Deploy commands
             upload_to_deck,
             extract_remote,

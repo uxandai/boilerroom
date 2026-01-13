@@ -14,6 +14,7 @@ import {
     Upload,
     Trophy,
     Wifi,
+    Zap,
 } from "lucide-react";
 import {
     fetchSteamGridDbArtwork,
@@ -57,6 +58,7 @@ export function GameCardModal({
     const [isRemoving, setIsRemoving] = useState(false);
     const [isAddingOnlineFix, setIsAddingOnlineFix] = useState(false);
     const [isGeneratingAchievements, setIsGeneratingAchievements] = useState(false);
+    const [isApplyingSteamless, setIsApplyingSteamless] = useState(false);
     const [showCopyModal, setShowCopyModal] = useState(false);
 
     // Fetch artwork when game changes
@@ -192,6 +194,30 @@ export function GameCardModal({
         }
     };
 
+    const handleApplySteamless = async () => {
+        if (!game) return;
+
+        if (!settings.steamlessPath) {
+            addLog("error", "Steamless CLI path not configured. Go to Settings → Paths and Tools.");
+            return;
+        }
+
+        setIsApplyingSteamless(true);
+        try {
+            const { applySteamlessToGame } = await import("@/lib/api");
+            const result = await applySteamlessToGame(game.path, settings.steamlessPath);
+            if (result.success) {
+                addLog("info", `Steamless: ${result.message}`);
+            } else {
+                addLog("warn", `Steamless: ${result.message}`);
+            }
+        } catch (e) {
+            addLog("error", `Steamless error: ${e}`);
+        } finally {
+            setIsApplyingSteamless(false);
+        }
+    };
+
     if (!game) return null;
 
     return (
@@ -295,6 +321,21 @@ export function GameCardModal({
                                     <Trophy className="w-4 h-4 mr-2" />
                                 )}
                                 Achievements
+                            </Button>
+
+                            <Button
+                                onClick={handleApplySteamless}
+                                disabled={isApplyingSteamless || !settings.steamlessPath}
+                                variant="outline"
+                                className="border-[#2a475e] text-purple-400 hover:bg-purple-900/20 hover:text-purple-300"
+                                title={!settings.steamlessPath ? "Configure Steamless path in Settings" : "Remove DRM using Steamless"}
+                            >
+                                {isApplyingSteamless ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Zap className="w-4 h-4 mr-2" />
+                                )}
+                                Steamless
                             </Button>
                         </div>
 
