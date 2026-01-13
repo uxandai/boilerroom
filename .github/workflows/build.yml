@@ -1,4 +1,4 @@
-name: Build TonTonDeck
+name: Build BoilerRoom
 
 on:
   push:
@@ -37,66 +37,70 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev \
             librsvg2-dev \
-            patchelf \
             libssl-dev
 
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Build Tauri app
-        run: npm run tauri build
+      - name: Build frontend
+        run: npm run build
 
-      - name: Upload AppImage
+      - name: Build Tauri binary
+        run: cd src-tauri && cargo build --release
+
+      - name: Prepare release package
+        run: |
+          mkdir -p release
+          cp src-tauri/target/release/boilerroom release/
+          cp -r src-tauri/icons release/
+          cp install.sh release/
+          cp PKGBUILD release/
+          chmod +x release/boilerroom release/install.sh
+          cd release && tar -czvf ../boilerroom-linux-x86_64.tar.gz *
+
+      - name: Upload release tarball
         uses: actions/upload-artifact@v4
         with:
-          name: TonTonDeck-linux-appimage
-          path: src-tauri/target/release/bundle/appimage/*.AppImage
+          name: BoilerRoom-linux-x86_64
+          path: boilerroom-linux-x86_64.tar.gz
           if-no-files-found: error
 
-  # TODO: Uncomment when ready to build for macOS
-  # build-macos:
-  #   runs-on: macos-latest
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #
-  #     - name: Setup Node.js
-  #       uses: actions/setup-node@v4
-  #       with:
-  #         node-version: 20
-  #         cache: 'npm'
-  #
-  #     - name: Install Rust
-  #       uses: dtolnay/rust-toolchain@stable
-  #
-  #     - name: Rust cache
-  #       uses: Swatinem/rust-cache@v2
-  #       with:
-  #         workspaces: src-tauri
-  #
-  #     - name: Install npm dependencies
-  #       run: npm ci
-  #
-  #     - name: Build Tauri app
-  #       run: npm run tauri build
-  #
-  #     - name: Upload macOS app
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: TonTonDeck-macos
-  #         path: src-tauri/target/release/bundle/macos/*.app
-  #         if-no-files-found: error
-  #
-  #     - name: Upload macOS dmg
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: TonTonDeck-macos-dmg
-  #         path: src-tauri/target/release/bundle/dmg/*.dmg
-  #         if-no-files-found: ignore
+  build-arch-package:
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  # Create release when pushing a tag
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel rust nodejs npm webkit2gtk gtk3 libayatana-appindicator
+
+      - name: Build with makepkg
+        run: |
+          # Create non-root user for makepkg
+          useradd -m builder
+          chown -R builder:builder .
+          
+          # Modify PKGBUILD to use local source
+          sed -i 's/source=.*/source=()/' PKGBUILD
+          sed -i 's/sha256sums=.*/sha256sums=()/' PKGBUILD
+          sed -i 's|\$srcdir/\$pkgname-\$pkgver|.|g' PKGBUILD
+          
+          # Build package
+          su builder -c "makepkg -s --noconfirm"
+
+      - name: Upload Arch package
+        uses: actions/upload-artifact@v4
+        with:
+          name: BoilerRoom-arch-pkg
+          path: "*.pkg.tar.zst"
+          if-no-files-found: warn
+
   release:
-    needs: [build-linux]
+    needs: [build-linux, build-arch-package]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
@@ -111,7 +115,8 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/**/*.AppImage
+            artifacts/**/*.tar.gz
+            artifacts/**/*.pkg.tar.zst
           generate_release_notes: true
           draft: false
           prerelease: false
