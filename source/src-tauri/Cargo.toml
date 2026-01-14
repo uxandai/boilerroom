@@ -1,0 +1,44 @@
+[package]
+name = "boilerroom"
+version = "1.1.0"
+description = "Steam Deck game manager"
+authors = ["BoilerRoom Team"]
+edition = "2021"
+
+[lib]
+name = "boilerroom_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-opener = "2"
+tauri-plugin-store = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["stream", "json", "blocking"] }
+ssh2 = "0.9"
+chrono = "0.4"
+tempfile = "3"
+anyhow = "1"
+thiserror = "1"
+futures = "0.3"
+urlencoding = "2"
+tauri-plugin-dialog = "2"
+zip = "2"
+regex = "1"
+walkdir = "2"
+notify = "6"
+crossbeam-channel = "0.5"
+dirs = "6.0.0"
+sevenz-rust = "0.6.1"
+shellexpand = "3"
+keyvalues-serde = "0.2"  # Type-safe VDF (de)serialization
+keyvalues-parser = "0.2" # Low-level VDF parsing
+steam-vent = "0.4"       # Steam CM protocol client
+steam-vent-proto = "0.5" # Steam protocol message definitions
