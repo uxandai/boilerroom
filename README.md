@@ -350,7 +350,7 @@ Special thanks to the creators of the tools that make this project possible:
 - **[DepotDownloaderMod](https://github.com/SteamAutoCracks/DepotDownloaderMod)** - Depot downloader
 - **[Deadboy666/h3adcr-b](https://github.com/Deadboy666/h3adcr-b)** - Cool bash scripts provider
 - **[xamionex/SLScheevo](https://github.com/xamionex/SLScheevo)** - Achievement unlocker
-- **[niwia/SLSah](https://github.com/niwia/SLSah)** - Achievement helper
+- **[niwia/SLSah](https://github.com/niwia/SLSah)** - Achievement unlocker
 
 ---
 
