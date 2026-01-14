@@ -98,11 +98,23 @@ curl -fsSL "https://raw.githubusercontent.com/Deadboy666/h3adcr-b/refs/heads/mai
 - **Tauri CLI**: `cargo install tauri-cli`
 
 ### Build
+
+**Dependencies for AppImage:**
+- `appimagetool` (from AUR or GitHub)
+- `fuse2` or `libfuse2`
+
 ```bash
 cd source
 npm install
-npm run tauri dev          # Development
-npm run tauri build        # Production
+
+# Option 1: Development Mode
+npm run tauri dev
+
+# Option 2: Build Binary Only (Fast, no bundler)
+npm run tauri build -- --no-bundle
+
+# Option 3: Build AppImage (Bundles webkit2gtk & deps)
+npm run tauri build -- --bundles appimage
 ```
 
 ---
