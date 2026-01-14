@@ -115,10 +115,10 @@ install_boilerroom() {
     info "Downloading BoilerRoom AppImage from GitHub..."
     local download_url="https://github.com/$GITHUB_REPO/releases/latest/download/$APPIMAGE_NAME"
     
-    if ! curl -L -o "$INSTALL_DIR/$BINARY_NAME" "$download_url" 2>/dev/null; then
+    if ! curl -fL -o "$INSTALL_DIR/$BINARY_NAME" "$download_url" 2>/dev/null; then
         # Fallback to specific version
         download_url="https://github.com/$GITHUB_REPO/releases/download/v1.0.0/$APPIMAGE_NAME"
-        if ! curl -L -o "$INSTALL_DIR/$BINARY_NAME" "$download_url" 2>/dev/null; then
+        if ! curl -fL -o "$INSTALL_DIR/$BINARY_NAME" "$download_url" 2>/dev/null; then
             error "Failed to download BoilerRoom"
             return 1
         fi
