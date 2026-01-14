@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # BoilerRoom + SLSsteam Installer
-# One-liner: curl -fsSL https://raw.githubusercontent.com/uxandai/boilerroom/main/install.sh | bash
+# One-liner: curl -H 'Accept: application/vnd.github.v3.raw' -fsSL https://api.github.com/repos/uxandai/boilerroom/contents/install.sh?ref=main | bash
 # Or clone and run: ./install.sh
 
 set -eu

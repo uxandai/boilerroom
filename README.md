@@ -12,8 +12,9 @@ Steam Deck Game Manager - Manage and sync your Steam library on Steam Deck/Linux
 
 **One-liner:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/uxandai/boilerroom/main/install.sh | bash
+curl -H 'Accept: application/vnd.github.v3.raw' -fsSL https://api.github.com/repos/uxandai/boilerroom/contents/install.sh?ref=main | bash
 ```
+> **⚠️ Security Warning:** Never pipe a script to bash without reading it first! You can view the code [here](https://github.com/uxandai/boilerroom/blob/main/install.sh).
 
 **Or manually:**
 ```bash
