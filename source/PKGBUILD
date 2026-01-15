@@ -7,18 +7,30 @@ arch=('x86_64')
 url="https://github.com/boilerroom/boilerroom"
 license=('MIT')
 depends=('webkit2gtk' 'gtk3' 'libayatana-appindicator' 'zstd')
-makedepends=('rust' 'cargo' 'nodejs' 'npm' 'clang' 'gcc')
+makedepends=('rust' 'cargo' 'nodejs' 'npm' 'clang' 'gcc' 'pkg-config' 'nasm')
 source=("$pkgname-$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 build() {
     cd "$srcdir/$pkgname-$pkgver"
     
-    # Fix for ring crate: use gcc linker instead of lld
-    # This resolves undefined symbol errors in ring's assembly
+    # CachyOS/Arch linker fix: force use of ld.bfd instead of mold/lld
+    # ring crate's assembly doesn't link properly with alternative linkers
     export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="gcc"
     export CC="gcc"
     export CXX="g++"
+    export RUSTFLAGS="-C linker=gcc -C link-arg=-fuse-ld=bfd"
+    
+    # Use system zstd library via pkg-config
+    export ZSTD_SYS_USE_PKG_CONFIG=1
+    
+    # Disable LTO which can cause issues with ring
+    export CARGO_PROFILE_RELEASE_LTO=false
+    
+    # Clean any cached builds that might have issues
+    rm -rf src-tauri/target/release/.fingerprint/ring-* 2>/dev/null || true
+    rm -rf src-tauri/target/release/deps/libring* 2>/dev/null || true
+    rm -rf src-tauri/target/release/build/ring-* 2>/dev/null || true
     
     # Build frontend
     npm ci

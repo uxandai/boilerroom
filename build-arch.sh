@@ -58,10 +58,14 @@ cd "$BUILD_DIR"
 # Update PKGBUILD source path
 sed -i "s|source=(.*)|source=(\"$PKGNAME-$PKGVER.tar.gz\")|" PKGBUILD
 
-# Fix for ring crate: use gcc linker instead of lld
+# CachyOS/Arch linker fix: force use of ld.bfd instead of mold/lld
 export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="gcc"
 export CC="gcc"
 export CXX="g++"
+export RUSTFLAGS="-C linker=gcc -C link-arg=-fuse-ld=bfd"
+
+# Use system zstd library via pkg-config
+export ZSTD_SYS_USE_PKG_CONFIG=1
 
 makepkg -sf --noconfirm
 

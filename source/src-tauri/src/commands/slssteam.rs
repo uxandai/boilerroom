@@ -17,7 +17,7 @@ pub struct SlssteamStatus {
     pub config_exists: bool,
     pub config_play_not_owned: bool,
     pub config_safe_mode_on: bool,
-    pub steam_jupiter_patched: bool,
+    pub steam_sh_patched: bool,  // Check steam.sh for LD_AUDIT (headcrab patches this)
     pub desktop_entry_patched: bool,
     pub additional_apps_count: usize,
 }
@@ -97,13 +97,22 @@ pub async fn verify_slssteam(config: SshConfig) -> Result<SlssteamStatus, String
             false
         };
 
-        let jupiter_path = Path::new("/usr/bin/steam-jupiter");
-        let steam_jupiter_patched = if jupiter_path.exists() {
-            std::fs::read_to_string(jupiter_path)
+        // Check steam.sh for LD_AUDIT (headcrab patches ~/.local/share/Steam/steam.sh)
+        let steam_sh_path = home.join(".local/share/Steam/steam.sh");
+        let steam_sh_patched = if steam_sh_path.exists() {
+            std::fs::read_to_string(&steam_sh_path)
                 .map(|c| c.contains("LD_AUDIT"))
                 .unwrap_or(false)
         } else {
-            false
+            // Fallback: check steam-jupiter for legacy SteamOS
+            let jupiter_path = Path::new("/usr/bin/steam-jupiter");
+            if jupiter_path.exists() {
+                std::fs::read_to_string(jupiter_path)
+                    .map(|c| c.contains("LD_AUDIT"))
+                    .unwrap_or(false)
+            } else {
+                false
+            }
         };
 
         let readonly_cmd = Path::new("/usr/bin/steamos-readonly");
@@ -124,7 +133,7 @@ pub async fn verify_slssteam(config: SshConfig) -> Result<SlssteamStatus, String
             config_exists,
             config_play_not_owned,
             config_safe_mode_on,
-            steam_jupiter_patched,
+            steam_sh_patched,
             desktop_entry_patched,
             additional_apps_count,
         });
@@ -185,11 +194,12 @@ pub async fn verify_slssteam(config: SshConfig) -> Result<SlssteamStatus, String
         .filter(|l| l.trim().starts_with("- ") && l.trim().len() > 2)
         .count();
 
-    let jupiter_out = ssh_exec(
+    // Check steam.sh first (headcrab patches this), fallback to steam-jupiter
+    let steam_sh_out = ssh_exec(
         &sess,
-        "grep -c 'LD_AUDIT' /usr/bin/steam-jupiter 2>/dev/null || echo '0'",
+        "grep -c 'LD_AUDIT' ~/.local/share/Steam/steam.sh 2>/dev/null || grep -c 'LD_AUDIT' /usr/bin/steam-jupiter 2>/dev/null || echo '0'",
     )?;
-    let steam_jupiter_patched = jupiter_out.trim().parse::<i32>().unwrap_or(0) > 0;
+    let steam_sh_patched = steam_sh_out.trim().parse::<i32>().unwrap_or(0) > 0;
 
     let desktop_out = ssh_exec(
         &sess,
@@ -204,7 +214,7 @@ pub async fn verify_slssteam(config: SshConfig) -> Result<SlssteamStatus, String
         config_exists,
         config_play_not_owned,
         config_safe_mode_on,
-        steam_jupiter_patched,
+        steam_sh_patched,
         desktop_entry_patched,
         additional_apps_count,
     })

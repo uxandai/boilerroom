@@ -42,7 +42,7 @@ interface VerifyStatus {
     library_inject_so_exists: boolean;
     config_exists: boolean;
     config_safe_mode_on: boolean;
-    steam_jupiter_patched: boolean;
+    steam_sh_patched: boolean;  // headcrab patches steam.sh
     desktop_entry_patched: boolean;
     additional_apps_count: number;
 }
@@ -134,7 +134,7 @@ export function SystemHealthPanel() {
                     library_inject_so_exists: status.library_inject_so_exists || false,
                     config_exists: status.config_exists,
                     config_safe_mode_on: false,
-                    steam_jupiter_patched: false,
+                    steam_sh_patched: false,
                     desktop_entry_patched: status.desktop_entry_patched || false,
                     additional_apps_count: status.additional_apps_count,
                 });
@@ -276,9 +276,9 @@ export function SystemHealthPanel() {
                                         </span>
                                     </div>
                                     <div className="flex justify-between">
-                                        <span>steam-jupiter.patch:</span>
-                                        <span className={verifyStatus.steam_jupiter_patched ? "text-green-400" : "text-gray-500"}>
-                                            {verifyStatus.steam_jupiter_patched ? "OK" : "N/A"}
+                                        <span>steam.sh patch:</span>
+                                        <span className={verifyStatus.steam_sh_patched ? "text-green-400" : "text-gray-500"}>
+                                            {verifyStatus.steam_sh_patched ? "OK" : "N/A"}
                                         </span>
                                     </div>
                                     <div className="flex justify-between">

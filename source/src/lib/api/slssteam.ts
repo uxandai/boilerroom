@@ -21,7 +21,7 @@ export interface SlssteamStatus {
     config_exists: boolean;
     config_play_not_owned: boolean;
     config_safe_mode_on: boolean;
-    steam_jupiter_patched: boolean;
+    steam_sh_patched: boolean;  // headcrab patches steam.sh
     desktop_entry_patched: boolean;
     additional_apps_count: number;
 }
