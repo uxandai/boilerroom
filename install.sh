@@ -67,7 +67,7 @@ install_boilerroom() {
     info "Checking latest version..."
     local release_info
     # Use /releases (not /releases/latest) to include prereleases
-    release_info=$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases" 2>/dev/null | head -c 5000 || echo "")
+    release_info=$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases" 2>/dev/null || echo "")
     
     local version="v1.4.0"  # Fallback version
     local download_url=""
@@ -80,13 +80,18 @@ install_boilerroom() {
     
     # Fallback URL if API parsing failed
     if [ -z "$download_url" ]; then
+        # Check if we were able to get a version but missed the URL
+        if [ "$version" != "v1.4.0" ]; then
+             warn "Could not find AppImage in release $version assets. Using fallback."
+        fi
         download_url="https://github.com/$GITHUB_REPO/releases/download/$version/$APPIMAGE_NAME"
     fi
     
     info "Downloading BoilerRoom ($version) AppImage from GitHub..."
+    info "URL: $download_url"
     
-    if ! curl -fL -o "$INSTALL_DIR/$BINARY_NAME" "$download_url" 2>/dev/null; then
-        error "Failed to download BoilerRoom"
+    if ! curl -fL -o "$INSTALL_DIR/$BINARY_NAME" "$download_url"; then
+        error "Failed to download BoilerRoom from $download_url"
         return 1
     fi
     
