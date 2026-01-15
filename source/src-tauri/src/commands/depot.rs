@@ -463,6 +463,7 @@ pub async fn extract_manifest_zip(zip_path: String) -> Result<GameManifestData, 
 }
 
 /// Run DepotDownloaderMod for a specific depot
+/// Now uses .NET: dotnet DepotDownloaderMod.dll <args>
 #[tauri::command]
 pub async fn run_depot_downloader(
     depot_downloader_path: String,
@@ -481,8 +482,18 @@ pub async fn run_depot_downloader(
     std::fs::write(&keys_file, format!("{};{}\n", depot_id, depot_key))
         .map_err(|e| format!("Failed to write keys file: {}", e))?;
 
-    // Build command
-    let mut cmd = Command::new(&depot_downloader_path);
+    // Determine if path is a DLL (use dotnet) or executable (run directly)
+    let is_dll = depot_downloader_path.ends_with(".dll");
+    
+    // Build command: either "dotnet <path>.dll" or just "<path>"
+    let mut cmd = if is_dll {
+        let mut c = Command::new("dotnet");
+        c.arg(&depot_downloader_path);
+        c
+    } else {
+        Command::new(&depot_downloader_path)
+    };
+    
     cmd.args([
         "-app",
         &app_id,

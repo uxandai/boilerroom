@@ -86,11 +86,6 @@ export function StatusDashboard() {
                     label: "SLSsteam",
                     status: slsStatus,
                 },
-                {
-                    label: "Updates",
-                    status: settings.slssteamVersion ? "ok" : "warning",
-                    detail: settings.slssteamVersion || "Not downloaded",
-                },
             ],
         },
         {

@@ -101,6 +101,7 @@ pub async fn steam_login(
 /// Generate achievement schema using Steam CM protocol (SLScheevo method)
 /// 
 /// Requires valid Steam connection (must be logged in)
+#[allow(dead_code)]
 pub async fn generate_achievement_schema_cm(
     app_id: &str,
     steam_user_id: &str,
@@ -222,6 +223,7 @@ async fn try_get_schema(
 }
 
 /// Create an empty stats file template (binary VDF format)
+#[allow(dead_code)]
 fn create_empty_stats_file() -> Vec<u8> {
     let mut data = Vec::new();
     data.push(0x00); // TYPE_MAP 

@@ -6,13 +6,19 @@ pkgdesc="Steam Deck game manager"
 arch=('x86_64')
 url="https://github.com/boilerroom/boilerroom"
 license=('MIT')
-depends=('webkit2gtk' 'gtk3' 'libayatana-appindicator')
-makedepends=('rust' 'cargo' 'nodejs' 'npm')
+depends=('webkit2gtk' 'gtk3' 'libayatana-appindicator' 'zstd')
+makedepends=('rust' 'cargo' 'nodejs' 'npm' 'clang' 'gcc')
 source=("$pkgname-$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 build() {
     cd "$srcdir/$pkgname-$pkgver"
+    
+    # Fix for ring crate: use gcc linker instead of lld
+    # This resolves undefined symbol errors in ring's assembly
+    export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="gcc"
+    export CC="gcc"
+    export CXX="g++"
     
     # Build frontend
     npm ci

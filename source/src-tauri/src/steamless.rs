@@ -503,7 +503,8 @@ where
 }
 
 /// Full Steamless processing pipeline
-/// Discovers Wine, checks/installs .NET, runs Steamless on largest exe
+/// If steamless_cli_path is a .dll, runs natively with `dotnet`
+/// If it's a .exe, uses Wine/Proton (legacy Windows version)
 #[allow(unused_variables)]
 pub fn process_game_with_steamless<F>(
     game_directory: &Path,
@@ -520,20 +521,42 @@ where
         return Ok(false);
     }
 
-    // On Windows, run natively without Wine
+    // Find largest exe in game directory first
+    progress_callback("Finding main game executable...");
+    let exe_path = find_largest_exe(game_directory)?;
+
+    eprintln!("[Steamless] Found largest exe: {:?}", exe_path);
+    progress_callback(&format!(
+        "Processing: {}",
+        exe_path.file_name().unwrap_or_default().to_string_lossy()
+    ));
+
+    // Check if we have the .NET Core version (DLL) - run natively with dotnet
+    let is_dotnet_dll = steamless_cli_path
+        .extension()
+        .map(|e| e.to_ascii_lowercase() == "dll")
+        .unwrap_or(false);
+
+    if is_dotnet_dll {
+        // Native .NET Core execution - no Wine needed!
+        progress_callback("Using native .NET Core Steamless...");
+        return run_steamless_dotnet(steamless_cli_path, &exe_path, progress_callback);
+    }
+
+    // On Windows, run .exe natively without Wine
     #[cfg(target_os = "windows")]
     {
         return run_steamless_windows(game_directory, steamless_cli_path, progress_callback);
     }
 
-    // Linux/SteamOS - use Wine/Proton
+    // Linux/SteamOS with .exe - use Wine/Proton (legacy path)
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         progress_callback("Searching for Proton/Wine installation...");
 
         let installations = find_wine_installations();
         if installations.is_empty() {
-            return Err("No Proton or Wine installation found. Please install Steam with Proton, or install Wine.".to_string());
+            return Err("No Proton or Wine installation found. Please install Steam with Proton, or install Wine.\nAlternatively, use the .NET Core version (Steamless.CLI.dll) which doesn't require Wine.".to_string());
         }
 
         let wine = &installations[0];
@@ -555,17 +578,7 @@ where
             progress_callback(".NET Framework 4.8 is installed");
         }
 
-        // Find largest exe in game directory
-        progress_callback("Finding main game executable...");
-        let exe_path = find_largest_exe(game_directory)?;
-
-        eprintln!("[Steamless] Found largest exe: {:?}", exe_path);
-        progress_callback(&format!(
-            "Processing: {}",
-            exe_path.file_name().unwrap_or_default().to_string_lossy()
-        ));
-
-        // Run Steamless
+        // Run Steamless via Wine
         run_steamless(
             wine,
             &prefix,
@@ -574,6 +587,144 @@ where
             progress_callback,
         )
     }
+}
+
+/// Run Steamless.CLI.dll natively using dotnet command
+/// This is the preferred method - no Wine required!
+fn run_steamless_dotnet<F>(
+    steamless_dll_path: &Path,
+    exe_path: &Path,
+    progress_callback: F,
+) -> Result<bool, String>
+where
+    F: Fn(&str),
+{
+    use std::io::{BufRead, BufReader};
+
+    progress_callback(&format!(
+        "Running Steamless on {}...",
+        exe_path.file_name().unwrap_or_default().to_string_lossy()
+    ));
+
+    // Build command: dotnet Steamless.CLI.dll <exe_path> --quiet --keepbind
+    let mut cmd = Command::new("dotnet");
+    cmd.arg(steamless_dll_path);
+    cmd.args([
+        &exe_path.to_string_lossy().to_string(),
+        "--quiet",
+        "--keepbind",
+    ]);
+
+    // Set working directory to steamless location for plugins
+    if let Some(parent) = steamless_dll_path.parent() {
+        cmd.current_dir(parent);
+    }
+
+    cmd.stdout(Stdio::piped());
+    cmd.stderr(Stdio::piped());
+
+    eprintln!(
+        "[Steamless] Running: dotnet {:?} {} --quiet --keepbind",
+        steamless_dll_path,
+        exe_path.display()
+    );
+
+    let mut child = cmd.spawn().map_err(|e| {
+        format!(
+            "Failed to start Steamless (dotnet): {}. Is .NET SDK installed?",
+            e
+        )
+    })?;
+
+    // Read output
+    let mut has_drm = false;
+    let mut unpacked_created = false;
+
+    if let Some(stdout) = child.stdout.take() {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines().map_while(Result::ok) {
+            let line_lower = line.to_lowercase();
+            eprintln!("[Steamless] {}", line);
+
+            progress_callback(&line);
+
+            // Check for DRM detection
+            if line_lower.contains("steam stub")
+                || line_lower.contains("steamstub")
+                || line_lower.contains("packed with")
+            {
+                has_drm = true;
+            }
+
+            // Check for successful unpack
+            if line_lower.contains("unpacked file saved")
+                || line_lower.contains("successfully unpacked")
+            {
+                unpacked_created = true;
+            }
+        }
+    }
+
+    let status = child
+        .wait()
+        .map_err(|e| format!("Steamless process failed: {}", e))?;
+
+    eprintln!(
+        "[Steamless] Exit code: {:?}, has_drm: {}, unpacked_created: {}",
+        status.code(),
+        has_drm,
+        unpacked_created
+    );
+
+    // Check for .unpacked.exe file
+    let unpacked_path = PathBuf::from(format!("{}.unpacked.exe", exe_path.to_string_lossy()));
+
+    if unpacked_path.exists() {
+        progress_callback("Steam DRM removed successfully!");
+
+        // Backup original and replace with unpacked
+        let backup_path = PathBuf::from(format!("{}.original.exe", exe_path.to_string_lossy()));
+
+        // Remove old backup if exists
+        if backup_path.exists() {
+            let _ = fs::remove_file(&backup_path);
+        }
+
+        // Rename original to backup
+        if let Err(e) = fs::rename(exe_path, &backup_path) {
+            eprintln!("[Steamless] Failed to backup original: {}", e);
+            return Err(format!("Failed to backup original exe: {}", e));
+        }
+
+        // Rename unpacked to original name
+        if let Err(e) = fs::rename(&unpacked_path, exe_path) {
+            // Try to restore original
+            let _ = fs::rename(&backup_path, exe_path);
+            return Err(format!("Failed to rename unpacked exe: {}", e));
+        }
+
+        progress_callback(&format!(
+            "Patched: {} (original backed up as .original.exe)",
+            exe_path.file_name().unwrap_or_default().to_string_lossy()
+        ));
+        return Ok(true);
+    }
+
+    // Exit code 1 typically means no DRM found
+    if status.code() == Some(1) {
+        progress_callback("No Steam DRM detected in executable");
+        return Ok(false);
+    }
+
+    if !status.success() {
+        return Err(format!(
+            "Steamless failed with exit code: {:?}",
+            status.code()
+        ));
+    }
+
+    progress_callback("Steamless completed (no changes needed)");
+    Ok(false)
 }
 
 /// Find the largest .exe file in a directory (likely the main game executable)

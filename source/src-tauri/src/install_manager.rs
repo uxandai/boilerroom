@@ -319,7 +319,17 @@ impl InstallManager {
                 
                 m.update_status("downloading", &format!("Downloading depot {}/{} (ID: {})", depot_idx+1, total_depots, depot.depot_id));
                 
-                let mut cmd = Command::new(&depot_downloader_path);
+                // Determine if path is a DLL (use dotnet) or executable (run directly)
+                let is_dll = depot_downloader_path.ends_with(".dll");
+                
+                let mut cmd = if is_dll {
+                    let mut c = Command::new("dotnet");
+                    c.arg(&depot_downloader_path);
+                    c
+                } else {
+                    Command::new(&depot_downloader_path)
+                };
+                
                 cmd.args([
                     "-app", &app_id_clone,
                     "-depot", &depot.depot_id,
