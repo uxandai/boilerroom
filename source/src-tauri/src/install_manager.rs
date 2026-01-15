@@ -422,7 +422,116 @@ impl InstallManager {
                 m.set_child_pid(None);
 
                 let status = child.wait();
-                if let Ok(s) = status {
+                
+                // Check if we were paused (process was killed intentionally)
+                if m.is_paused() {
+                    eprintln!("[DDMod] Paused - waiting for resume...");
+                    // Wait for resume signal
+                    while m.is_paused() && !m.is_cancelled() {
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                    }
+                    
+                    // If cancelled while paused, exit
+                    if m.is_cancelled() {
+                        eprintln!("[DDMod] Cancelled while paused");
+                        return;
+                    }
+                    
+                    // Resume: restart download for this depot (DepotDownloaderMod will resume)
+                    eprintln!("[DDMod] Resuming depot {} download...", depot.depot_id);
+                    m.update_status("downloading", &format!("Resuming depot {}/{} (ID: {})", depot_idx+1, total_depots, depot.depot_id));
+                    
+                    // Respawn the download command for this depot
+                    let mut resume_cmd = if is_dll {
+                        let mut c = Command::new("dotnet");
+                        c.arg(&depot_downloader_path);
+                        c
+                    } else {
+                        Command::new(&depot_downloader_path)
+                    };
+                    
+                    resume_cmd.args([
+                        "-app", &app_id_clone,
+                        "-depot", &depot.depot_id,
+                        "-manifest", &depot.manifest_id,
+                        "-manifestfile", &depot.manifest_file,
+                        "-depotkeys", keys_file.to_string_lossy().as_ref(),
+                        "-max-downloads", "25",
+                        "-dir", download_dir_clone.to_str().unwrap(),
+                        "-validate",
+                    ]);
+                    resume_cmd.stdout(Stdio::piped());
+                    resume_cmd.stderr(Stdio::piped());
+                    
+                    let mut resume_child = match resume_cmd.spawn() {
+                        Ok(c) => c,
+                        Err(e) => {
+                            m.update_status("error", &format!("Failed to resume: {}", e));
+                            return;
+                        }
+                    };
+                    
+                    m.set_child_pid(Some(resume_child.id()));
+                    
+                    // Parse stdout for resumed download
+                    if let Some(stdout) = resume_child.stdout.take() {
+                        let reader = BufReader::new(stdout);
+                        let start_time = std::time::Instant::now();
+                        
+                        for line in reader.lines().map_while(Result::ok) {
+                            if m.is_cancelled() {
+                                eprintln!("[DDMod] Cancellation during resume");
+                                let _ = resume_child.kill();
+                                return;
+                            }
+                            
+                            // Check for pause again during resumed download
+                            if m.is_paused() {
+                                eprintln!("[DDMod] Paused again during resume");
+                                let _ = resume_child.kill();
+                                break; // Will be caught by outer pause check
+                            }
+                            
+                            eprintln!("[DDMod] {}", line);
+                            
+                            if let Some(caps) = percent_re.captures(&line) {
+                                if let Some(pct_match) = caps.get(1) {
+                                    if let Ok(depot_pct) = pct_match.as_str().parse::<f64>() {
+                                        let raw_pct = ((depot_idx as f64 * 100.0) + depot_pct) / (total_depots as f64);
+                                        let overall_pct = if is_local { raw_pct } else { raw_pct * 0.5 };
+                                        m.update_download_percent(overall_pct);
+                                        
+                                        let elapsed = start_time.elapsed().as_secs_f64();
+                                        let eta = if overall_pct > 0.5 && elapsed > 1.0 {
+                                            let total_time = elapsed * 100.0 / overall_pct;
+                                            let remaining = total_time - elapsed;
+                                            if remaining > 3600.0 {
+                                                format!("{:.0}h {:.0}m", remaining / 3600.0, (remaining % 3600.0) / 60.0)
+                                            } else if remaining > 60.0 {
+                                                format!("{:.0}m {:.0}s", remaining / 60.0, remaining % 60.0)
+                                            } else {
+                                                format!("{:.0}s", remaining.max(1.0))
+                                            }
+                                        } else {
+                                            "calculating...".to_string()
+                                        };
+                                        m.update_download_speed_eta("", &eta);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    m.set_child_pid(None);
+                    
+                    // Check if paused again during resume
+                    if m.is_paused() {
+                        // Recursive handling: will continue the while loop for pause check
+                        continue;
+                    }
+                    
+                    let _ = resume_child.wait();
+                } else if let Ok(s) = status {
                     if !s.success() {
                         eprintln!("[DDMod] Depot {} failed with exit code {:?}", depot.depot_id, s.code());
                         // Don't return on failure - try next depot

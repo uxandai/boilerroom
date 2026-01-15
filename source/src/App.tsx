@@ -140,8 +140,8 @@ function App() {
           error: payload.state === "error" ? payload.message : undefined,
         });
 
-        // Trigger next queued item if current finished
-        if (payload.state === "finished") {
+        // Trigger next queued item if current finished or cancelled
+        if (payload.state === "finished" || payload.state === "cancelled") {
           const { installQueue, popQueue } = useAppStore.getState();
           if (installQueue.length > 0) {
             const nextItem = popQueue();

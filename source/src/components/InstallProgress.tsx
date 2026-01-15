@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAppStore } from "@/store/useAppStore";
 import { cancelInstallation, pauseInstallation, resumeInstallation } from "@/lib/api";
-import { X, Loader2, CheckCircle, AlertCircle, PauseCircle, Trash2, FolderOpen } from "lucide-react";
+import { X, Loader2, CheckCircle, AlertCircle, PauseCircle, Trash2 } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,7 +25,7 @@ export function InstallProgress() {
   const getPhaseInfo = () => {
     switch (installProgress.step) {
       case "downloading":
-        return { icon: <Loader2 className="w-5 h-5 animate-spin text-[#67c1f5]" />, label: "Downloading", color: "text-[#67c1f5]", bgColor: "bg-[#67c1f5]" };
+        return { icon: <Loader2 className="w-5 h-5 animate-spin text-[#67c1f5]" />, label: `Downloading: ${installProgress.gameName}`, color: "text-[#67c1f5]", bgColor: "bg-[#67c1f5]" };
       case "steamless":
         return { icon: <Loader2 className="w-5 h-5 animate-spin text-yellow-400" />, label: "Patching DRM", color: "text-yellow-400", bgColor: "bg-yellow-400" };
       case "transferring":
@@ -69,9 +69,9 @@ export function InstallProgress() {
     setShowCancelDialog(true);
   };
 
-  const handleCancelConfirm = async (cleanup: boolean) => {
+  const handleCancelConfirm = async () => {
     setShowCancelDialog(false);
-    addLog("warn", `Cancelling operation...${cleanup ? " (cleanup enabled)" : " (keeping files)"}`);
+    addLog("warn", `Cancelling and cleaning up...`);
     try {
       // Call appropriate cancel function based on operation type
       if (installProgress?.step === "transferring") {
@@ -83,8 +83,8 @@ export function InstallProgress() {
         addLog("info", "Installation cancelled");
       }
 
-      // If cleanup is true, delete partial files
-      if (cleanup && installProgress?.appId && installProgress?.gameName) {
+      // Always cleanup partial files
+      if (installProgress?.appId && installProgress?.gameName) {
         try {
           const { cleanupCancelledInstall } = await import("@/lib/api");
           const { sshConfig, connectionMode } = useAppStore.getState();
@@ -94,7 +94,6 @@ export function InstallProgress() {
           if (connectionMode === "local") {
             const { homeDir } = await import("@tauri-apps/api/path");
             const home = await homeDir();
-            // homeDir returns something like "/home/pp/" - ensure proper path joining
             libraryPath = home.endsWith('/')
               ? `${home}.local/share/Steam`
               : `${home}/.local/share/Steam`;
@@ -102,7 +101,7 @@ export function InstallProgress() {
             libraryPath = `/home/deck/.steam/steam`;
           }
 
-          addLog("info", `Cleanup: appId=${installProgress.appId}, game=${installProgress.gameName}, library=${libraryPath}`);
+          addLog("info", `Cleanup: appId=${installProgress.appId}, game=${installProgress.gameName}`);
 
           const configToUse = { ...sshConfig, is_local: connectionMode === "local" };
           const result = await cleanupCancelledInstall(
@@ -115,8 +114,6 @@ export function InstallProgress() {
         } catch (cleanupError) {
           addLog("error", `Cleanup failed: ${cleanupError}`);
         }
-      } else if (!cleanup) {
-        addLog("info", "Partial files kept - can be uninstalled from Library");
       }
     } catch (error) {
       addLog("error", `Cancel failed: ${error}`);
@@ -259,7 +256,7 @@ export function InstallProgress() {
           {(installProgress.step === "downloading" || installProgress.step === "transferring") && (
             <button
               onClick={handlePause}
-              className="w-10 h-10 rounded bg-yellow-600 hover:bg-yellow-500 flex items-center justify-center"
+              className="w-10 h-10 rounded flex items-center justify-center bg-gradient-to-b from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 shadow-lg"
               title="Pause"
             >
               <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -273,7 +270,7 @@ export function InstallProgress() {
           {installProgress.step === "paused" && (
             <button
               onClick={handleResume}
-              className="w-10 h-10 rounded bg-green-600 hover:bg-green-500 flex items-center justify-center"
+              className="w-10 h-10 rounded flex items-center justify-center bg-gradient-to-b from-green-500 to-green-600 hover:from-green-400 hover:to-green-500 shadow-lg"
               title="Resume"
             >
               <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24">
@@ -286,7 +283,7 @@ export function InstallProgress() {
           {!isDone && !isError && !isCancelled && (
             <button
               onClick={handleCancel}
-              className="w-10 h-10 rounded bg-red-600 hover:bg-red-500 flex items-center justify-center"
+              className="w-10 h-10 rounded flex items-center justify-center bg-gradient-to-b from-red-500 to-red-600 hover:from-red-400 hover:to-red-500 shadow-lg"
               title="Cancel"
             >
               <X className="w-5 h-5 text-white" />
@@ -297,7 +294,7 @@ export function InstallProgress() {
           {(isDone || isError || isCancelled) && (
             <button
               onClick={() => setInstallProgress(null)}
-              className="px-4 py-2 rounded bg-[#67c1f5] hover:bg-[#7dd0ff] text-[#1b2838] font-bold"
+              className="px-4 py-2 rounded font-bold bg-gradient-to-b from-[#67c1f5] to-[#4a9bc7] hover:from-[#7dd0ff] hover:to-[#67c1f5] text-white shadow-lg"
             >
               Close
             </button>
@@ -317,23 +314,16 @@ export function InstallProgress() {
           <AlertDialogFooter className="gap-2">
             <AlertDialogCancel
               onClick={() => setShowCancelDialog(false)}
-              className="bg-[#2a475e] border-[#2a475e] text-white hover:bg-[#3a5a7e]"
+              className="bg-gradient-to-b from-[#3a5a7e] to-[#2a475e] border-[#2a475e] text-white hover:from-[#4a6a8e] hover:to-[#3a5a7e]"
             >
               Continue Download
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => handleCancelConfirm(false)}
-              className="bg-[#67c1f5] text-[#1b2838] hover:bg-[#7dd0ff] flex items-center gap-2"
-            >
-              <FolderOpen className="w-4 h-4" />
-              Keep Files
-            </AlertDialogAction>
-            <AlertDialogAction
-              onClick={() => handleCancelConfirm(true)}
-              className="bg-red-600 text-white hover:bg-red-500 flex items-center gap-2"
+              onClick={() => handleCancelConfirm()}
+              className="bg-gradient-to-b from-red-500 to-red-600 text-white hover:from-red-400 hover:to-red-500 flex items-center gap-2"
             >
               <Trash2 className="w-4 h-4" />
-              Delete Files
+              Cancel & Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
