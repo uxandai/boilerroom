@@ -36,19 +36,20 @@ success "All dependencies found"
 
 mkdir -p "$OUTPUT_DIR"
 
-# Build frontend
-step "Building frontend..."
-cd "$SOURCE_DIR"
-npm ci
-npm run build
-success "Frontend built"
+# Clean previous builds to force asset embedding
+step "Cleaning previous builds..."
+rm -rf "$SOURCE_DIR/src-tauri/target/release/boilerroom"
+rm -rf "$SOURCE_DIR/dist"
 
-# Build Tauri binary with cargo
-step "Building Tauri binary with cargo..."
-cd "$SOURCE_DIR/src-tauri"
-cargo build --release
+# Build Tauri binary using Tauri CLI (ensures assets are embedded correctly)
+# This will automatically run 'npm run build' defined in tauri.conf.json
+step "Building Tauri binary..."
+cd "$SOURCE_DIR"
+# --no-bundle means it only builds the binary, skips AppImage/Deb creation
+npx tauri build --no-bundle
 success "Binary built"
 
+# Define binary path (Tauri CLI puts it in target/release)
 BINARY="$SOURCE_DIR/src-tauri/target/release/$PKGNAME"
 if [ ! -f "$BINARY" ]; then
     error "Binary not found at $BINARY"
