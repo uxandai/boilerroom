@@ -9,8 +9,10 @@ import { ApiStatus } from "@/components/ApiStatus";
 import { ModeSelectionScreen } from "@/components/ModeSelectionScreen";
 import { SetupWizard } from "@/components/SetupWizard";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { UpdateNotificationDialog } from "@/components/UpdateNotificationDialog";
 import { useAppStore } from "@/store/useAppStore";
 import { getApiKey, loadConnectionMode } from "@/lib/api";
+import type { UpdateInfo } from "@/lib/api/system";
 import { Power } from "lucide-react";
 import { useEffect, useState, useRef } from "react";
 import "./index.css";
@@ -18,6 +20,7 @@ import "./index.css";
 function App() {
   const { setSettings, setSshConfig, activeTab, setActiveTab, setConnectionMode, triggerLibraryRefresh } = useAppStore();
   const [showModeSelection, setShowModeSelection] = useState<boolean | null>(null);
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
 
   // Track if initialization has occurred (prevents StrictMode double-call)
   const hasInitializedRef = useRef(false);
@@ -92,6 +95,18 @@ function App() {
             slssteamVersion: cachedVersion || undefined,
             slssteamPath: cachedPath || "",
           });
+        }
+
+        // Check for updates (non-blocking)
+        try {
+          const { checkForUpdate } = await import("@/lib/api/system");
+          const updateResult = await checkForUpdate();
+          if (updateResult.update_available) {
+            setUpdateInfo(updateResult);
+          }
+        } catch (updateError) {
+          // Update check failed silently - not critical
+          console.warn("[Update] Failed to check for updates:", updateError);
         }
       } catch (error) {
         setShowModeSelection(true);
@@ -242,6 +257,17 @@ function App() {
 
         {/* Setup Wizard (first launch) */}
         <SetupWizard />
+
+        {/* Update Notification Dialog */}
+        {updateInfo && (
+          <UpdateNotificationDialog
+            open={updateInfo.update_available}
+            onClose={() => setUpdateInfo(null)}
+            currentVersion={updateInfo.current_version}
+            latestVersion={updateInfo.latest_version}
+            releaseUrl={updateInfo.release_url}
+          />
+        )}
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col min-h-0 px-4 pb-4">
