@@ -33,8 +33,8 @@ export function ToolPathsPanel() {
             const selected = await open({
                 multiple: false,
                 directory: false,
-                filters: [{ name: "Steamless", extensions: ["exe"] }],
-                title: "Select Steamless.exe"
+                filters: [{ name: "Steamless", extensions: ["exe", "dll"] }],
+                title: "Select Steamless.exe or Steamless.CLI.dll"
             });
             if (selected) {
                 const path = typeof selected === 'string' ? selected : (selected as { path?: string })?.path || String(selected);
@@ -96,12 +96,12 @@ export function ToolPathsPanel() {
                 </div>
 
                 <div className="space-y-2">
-                    <Label htmlFor="steamless">Steamless.exe Path (Optional)</Label>
+                    <Label htmlFor="steamless">Steamless Path (Optional, .exe or .dll)</Label>
                     <div className="flex gap-2">
                         <Input
                             id="steamless"
                             value={settings.steamlessPath || ""}
-                            placeholder="/path/to/Steamless.exe"
+                            placeholder="/path/to/Steamless.CLI.dll or .exe"
                             onChange={(e) => setSettings({ steamlessPath: e.target.value })}
                             className="bg-[#0a0a0a] border-[#2a475e]"
                         />

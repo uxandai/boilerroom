@@ -63,15 +63,17 @@ install_boilerroom() {
     mkdir -p "$DESKTOP_DIR"
     mkdir -p "$ICON_DIR/128x128/apps"
     
-    # Get latest release version from GitHub API
+    # Get latest release version from GitHub API (includes prereleases)
     info "Checking latest version..."
     local release_info
-    release_info=$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases/latest" 2>/dev/null || echo "")
+    # Use /releases (not /releases/latest) to include prereleases
+    release_info=$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases" 2>/dev/null | head -c 5000 || echo "")
     
-    local version="v1.0.0"  # Fallback version
+    local version="v1.2.0"  # Fallback version
     local download_url=""
     
     if [ -n "$release_info" ]; then
+        # Get first (most recent) release tag
         version=$(echo "$release_info" | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
         download_url=$(echo "$release_info" | grep '"browser_download_url"' | grep -i "appimage" | head -1 | sed 's/.*"browser_download_url": *"\([^"]*\)".*/\1/')
     fi

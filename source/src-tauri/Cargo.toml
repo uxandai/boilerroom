@@ -1,6 +1,6 @@
 [package]
 name = "boilerroom"
-version = "1.1.0"
+version = "1.2.0"
 description = "Steam Deck game manager"
 authors = ["BoilerRoom Team"]
 edition = "2021"
