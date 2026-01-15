@@ -33,7 +33,7 @@ export function ToolPathsPanel() {
             const selected = await open({
                 multiple: false,
                 directory: false,
-                filters: [{ name: "Steamless", extensions: ["exe", "dll"] }],
+                // No filters - GTK may not handle .dll extension properly
                 title: "Select Steamless.exe or Steamless.CLI.dll"
             });
             if (selected) {

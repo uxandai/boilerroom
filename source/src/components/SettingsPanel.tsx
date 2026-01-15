@@ -32,7 +32,7 @@ export function SettingsPanel() {
         const version = await getVersion();
         setAppVersion(version);
       } catch {
-        setAppVersion("1.3.0");
+        setAppVersion("1.4.0");
       }
     };
     loadVersion();

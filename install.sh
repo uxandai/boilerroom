@@ -69,7 +69,7 @@ install_boilerroom() {
     # Use /releases (not /releases/latest) to include prereleases
     release_info=$(curl -fsSL "https://api.github.com/repos/$GITHUB_REPO/releases" 2>/dev/null | head -c 5000 || echo "")
     
-    local version="v1.3.0"  # Fallback version
+    local version="v1.4.0"  # Fallback version
     local download_url=""
     
     if [ -n "$release_info" ]; then
