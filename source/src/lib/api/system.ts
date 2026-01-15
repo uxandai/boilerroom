@@ -105,3 +105,18 @@ export async function checkDotnetAvailable(): Promise<boolean> {
     return invoke<boolean>("check_dotnet_available");
 }
 
+// Update checking
+export interface UpdateInfo {
+    update_available: boolean;
+    current_version: string;
+    latest_version: string;
+    release_url: string;
+}
+
+/**
+ * Check for application updates from GitHub releases.
+ * Compares current version with latest release and returns update info.
+ */
+export async function checkForUpdate(): Promise<UpdateInfo> {
+    return invoke<UpdateInfo>("check_for_update");
+}

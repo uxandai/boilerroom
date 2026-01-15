@@ -165,6 +165,8 @@ pub fn run() {
             clear_cached_manifest,
             clear_manifest_cache,
             get_manifest_cache_info,
+            // Update check command
+            check_for_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

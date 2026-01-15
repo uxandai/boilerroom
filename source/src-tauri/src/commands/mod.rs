@@ -19,6 +19,7 @@ pub mod steamcmd;
 pub mod steamless_commands;
 pub mod tools;
 pub mod transfer;
+pub mod update;
 
 // Re-export all public items for backward compatibility with lib.rs
 pub use api::*;
@@ -37,3 +38,4 @@ pub use steamcmd::*;
 pub use steamless_commands::*;
 pub use tools::*;
 pub use transfer::*;
+pub use update::*;
