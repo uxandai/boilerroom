@@ -1,6 +1,6 @@
 # BoilerRoom
 
-> **⚠️ WORK IN PROGRESS** - Pre-release! Use at your own risk.
+> **⚠️ WORK IN PROGRESS** - Pre-release! Use at your own risk. AI tools was used!
 
 Steam Deck Game Manager - Manage and sync your Steam library on Steam Deck/Linux.
 
