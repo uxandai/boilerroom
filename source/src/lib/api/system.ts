@@ -99,3 +99,9 @@ export async function detectSteamDeck(): Promise<SteamDeckDetection> {
 export async function checkSshpassAvailable(): Promise<boolean> {
     return invoke<boolean>("check_sshpass_available");
 }
+
+// Check if dotnet runtime is available (for .dll tools)
+export async function checkDotnetAvailable(): Promise<boolean> {
+    return invoke<boolean>("check_dotnet_available");
+}
+

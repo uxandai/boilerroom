@@ -176,3 +176,36 @@ pub async fn launch_slsah() -> Result<String, String> {
         Err("No supported terminal emulator found (tried konsole, gnome-terminal, xfce4-terminal, xterm)".to_string())
     }
 }
+
+/// Check if dotnet runtime is available on the system (version 9+ required)
+/// Returns (available, version_string)
+#[tauri::command]
+pub async fn check_dotnet_available() -> Result<(bool, String), String> {
+    use std::process::Command;
+    
+    let result = Command::new("dotnet")
+        .arg("--info")
+        .output();
+    
+    match result {
+        Ok(output) if output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            // Parse version from "Host: Version: X.Y.Z" section
+            let version = stdout
+                .lines()
+                .find(|line| line.trim().starts_with("Version:"))
+                .and_then(|line| line.split(':').nth(1))
+                .map(|v| v.trim().to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+            
+            // Check if major version is 9+
+            let major: u32 = version.split('.').next()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0);
+            
+            let available = major >= 9;
+            Ok((available, version))
+        }
+        _ => Ok((false, "not installed".to_string()))
+    }
+}

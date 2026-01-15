@@ -139,6 +139,7 @@ pub fn run() {
             check_slsah_installed,
             install_slsah,
             launch_slsah,
+            check_dotnet_available,
             // API status
             check_depot_provider_api_status,
             // SLSsteam config management

@@ -161,12 +161,149 @@ print_summary() {
     echo ""
 }
 
+# Install external tools (DepotDownloaderMod, Steamless)
+install_tools() {
+    local TOOLS_DIR="$HOME/.local/share/boilerroom/tools"
+    local SETTINGS_DIR="$HOME/.local/share/com.boilerroom.app"
+    local SETTINGS_FILE="$SETTINGS_DIR/settings.json"
+    
+    step "Checking for .NET runtime..."
+    if command -v dotnet &>/dev/null; then
+        # Extract version from dotnet --info (more reliable than --version)
+        DOTNET_VERSION=$(dotnet --info 2>/dev/null | grep -E "^\s*Version:" | head -1 | awk '{print $2}')
+        if [ -z "$DOTNET_VERSION" ]; then
+            DOTNET_VERSION=$(dotnet --info 2>/dev/null | grep -E "Host:" -A1 | grep "Version:" | awk '{print $2}')
+        fi
+        
+        # Check major version (need 9+)
+        DOTNET_MAJOR=$(echo "$DOTNET_VERSION" | cut -d. -f1)
+        if [ -n "$DOTNET_MAJOR" ] && [ "$DOTNET_MAJOR" -ge 9 ] 2>/dev/null; then
+            success ".NET $DOTNET_VERSION detected (version 9+ required ✓)"
+            DOTNET_AVAILABLE=true
+        elif [ -n "$DOTNET_MAJOR" ]; then
+            warn ".NET $DOTNET_VERSION detected but version 9+ is required"
+            DOTNET_AVAILABLE=false
+        else
+            warn ".NET found but couldn't determine version"
+            DOTNET_AVAILABLE=false
+        fi
+    else
+        warn "No .NET runtime found - will use native binaries where available"
+        DOTNET_AVAILABLE=false
+    fi
+    
+    if ask "Download external tools (DepotDownloaderMod, Steamless)?" "y"; then
+        step "Downloading tools from BoilerRoom repository..."
+        mkdir -p "$TOOLS_DIR"
+        
+        # Base URL for raw GitHub content
+        TOOLS_BASE_URL="https://raw.githubusercontent.com/uxandai/boilerroom/main/tools"
+        
+        if [ "$DOTNET_AVAILABLE" = true ]; then
+            # Download .NET DLL versions
+            info "Downloading .NET versions (ddm-net, steamless-net)..."
+            
+            # DepotDownloaderMod .NET version
+            mkdir -p "$TOOLS_DIR/ddm-net"
+            for file in DepotDownloaderMod.dll DepotDownloaderMod.runtimeconfig.json DepotDownloaderMod.deps.json \
+                        SteamKit2.dll protobuf-net.dll protobuf-net.Core.dll QRCoder.dll ZstdSharp.dll System.IO.Hashing.dll; do
+                curl -fsSL "$TOOLS_BASE_URL/ddm-net/$file" -o "$TOOLS_DIR/ddm-net/$file" 2>/dev/null || true
+            done
+            if [ -f "$TOOLS_DIR/ddm-net/DepotDownloaderMod.dll" ]; then
+                success "DepotDownloaderMod.dll downloaded"
+                DDM_PATH="$TOOLS_DIR/ddm-net/DepotDownloaderMod.dll"
+            else
+                warn "Failed to download DepotDownloaderMod.dll"
+                DDM_PATH=""
+            fi
+            
+            # Steamless CLI .NET version
+            mkdir -p "$TOOLS_DIR/steamless-net"
+            for file in Steamless.CLI.dll Steamless.CLI.runtimeconfig.json Steamless.CLI.dll.config; do
+                curl -fsSL "$TOOLS_BASE_URL/steamless-net/$file" -o "$TOOLS_DIR/steamless-net/$file" 2>/dev/null || true
+            done
+            # Also get Plugins folder
+            mkdir -p "$TOOLS_DIR/steamless-net/Plugins"
+            # Note: Plugins are optional, main CLI should work without them for basic unpacking
+            if [ -f "$TOOLS_DIR/steamless-net/Steamless.CLI.dll" ]; then
+                success "Steamless.CLI.dll downloaded"
+                SL_PATH="$TOOLS_DIR/steamless-net/Steamless.CLI.dll"
+            else
+                warn "Failed to download Steamless.CLI.dll"
+                SL_PATH=""
+            fi
+        else
+            # Download native Linux binary from boilerroom repo
+            info "Downloading native Linux DepotDownloaderMod..."
+            
+            mkdir -p "$TOOLS_DIR/ddm-native"
+            if curl -fsSL "$TOOLS_BASE_URL/DepotDownloaderMod" -o "$TOOLS_DIR/ddm-native/DepotDownloaderMod" 2>/dev/null; then
+                chmod +x "$TOOLS_DIR/ddm-native/DepotDownloaderMod"
+                success "DepotDownloaderMod (native Linux) downloaded"
+                DDM_PATH="$TOOLS_DIR/ddm-native/DepotDownloaderMod"
+            else
+                warn "Native DepotDownloaderMod not available - install .NET 9+ or download manually"
+                DDM_PATH=""
+            fi
+            
+            info "Skipping Steamless (.NET not available, use Wine with Steamless.exe manually)"
+            SL_PATH=""
+        fi
+        
+        # Configure settings.json with tool paths
+        step "Configuring settings..."
+        mkdir -p "$SETTINGS_DIR"
+        
+        if [ -f "$SETTINGS_FILE" ]; then
+            # Update existing settings.json
+            info "Updating existing settings.json..."
+            # Use a simple approach - create temp file and merge
+            TEMP_SETTINGS=$(mktemp)
+            if command -v jq &>/dev/null; then
+                jq --arg ddm "$DDM_PATH" --arg sl "$SL_PATH" \
+                    '.toolSettings.depotDownloaderPath = $ddm | .toolSettings.steamlessPath = $sl' \
+                    "$SETTINGS_FILE" > "$TEMP_SETTINGS" 2>/dev/null && mv "$TEMP_SETTINGS" "$SETTINGS_FILE"
+            else
+                # Fallback: just note the paths
+                info "Install jq for automatic settings update, or configure paths manually in app"
+            fi
+        else
+            # Create new settings.json
+            info "Creating settings.json..."
+            cat > "$SETTINGS_FILE" << SETTINGS_EOF
+{
+  "connectionMode": "local",
+  "toolSettings": {
+    "depotDownloaderPath": "$DDM_PATH",
+    "steamlessPath": "$SL_PATH",
+    "slssteamPath": "",
+    "steamGridDbApiKey": "",
+    "steamApiKey": "",
+    "steamUserId": ""
+  }
+}
+SETTINGS_EOF
+        fi
+        
+        success "Tools configured!"
+        if [ -n "$DDM_PATH" ]; then
+            info "DepotDownloaderMod: $DDM_PATH"
+        fi
+        if [ -n "$SL_PATH" ]; then
+            info "Steamless CLI: $SL_PATH"
+        fi
+    fi
+}
+
 # Main
 main() {
     print_banner
     
     # Install BoilerRoom
     install_boilerroom
+    
+    # Optional: Download and configure external tools
+    install_tools
     
     print_summary
 }

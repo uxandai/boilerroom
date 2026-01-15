@@ -133,8 +133,22 @@ export function SettingsPanel() {
         <Card className="bg-[#1b2838] border-[#2a475e]">
           <CardHeader className="pb-3">
             <CardTitle className="text-white">Steam Deck Connection</CardTitle>
+            <CardDescription>
+              Connect to your Steam Deck over SSH to transfer games remotely.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* SSH Setup Help */}
+            <div className="p-3 rounded-md border bg-[#0d1821] border-[#2a475e] text-xs text-muted-foreground">
+              <p className="font-medium text-white mb-2">📱 Steam Deck SSH Setup:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>On Steam Deck, go to <strong>Desktop Mode</strong></li>
+                <li>Open <strong>Konsole</strong> terminal</li>
+                <li>Set a password: <code className="bg-[#1b2838] px-1 rounded">passwd</code></li>
+                <li>Enable SSH: <code className="bg-[#1b2838] px-1 rounded">sudo systemctl enable --now sshd</code></li>
+                <li>Find IP: <code className="bg-[#1b2838] px-1 rounded">ip addr</code> (look for 192.168.x.x)</li>
+              </ol>
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="col-span-2 space-y-2">
                 <Label htmlFor="ip">Steam Deck IP Address (from network settings)</Label>

@@ -1,16 +1,31 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAppStore } from "@/store/useAppStore";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { FolderOpen, Save, Check, Wrench } from "lucide-react";
+import { FolderOpen, Save, Check, Wrench, AlertCircle, CheckCircle2 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { invoke } from "@tauri-apps/api/core";
 
 export function ToolPathsPanel() {
     const { settings, setSettings, addLog } = useAppStore();
     const [isSaving, setIsSaving] = useState(false);
     const [justSaved, setJustSaved] = useState(false);
+    const [dotnetStatus, setDotnetStatus] = useState<{ available: boolean; version: string } | null>(null);
+
+    // Check for dotnet on mount
+    useEffect(() => {
+        const checkDotnet = async () => {
+            try {
+                const [available, version] = await invoke<[boolean, string]>("check_dotnet_available");
+                setDotnetStatus({ available, version });
+            } catch {
+                setDotnetStatus({ available: false, version: "error" });
+            }
+        };
+        checkDotnet();
+    }, []);
 
     const handleBrowseDepotDownloader = async () => {
         try {
@@ -79,6 +94,31 @@ export function ToolPathsPanel() {
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+                {/* Dotnet Detection Status */}
+                {dotnetStatus !== null && (
+                    <div className={`p-3 rounded-md border ${dotnetStatus.available ? 'bg-[#2a4c28] border-[#408f40]' : 'bg-[#4c4428] border-[#8f8040]'}`}>
+                        <div className="flex items-center gap-2">
+                            {dotnetStatus.available ? (
+                                <>
+                                    <CheckCircle2 className="w-4 h-4 text-[#6bff6b]" />
+                                    <span className="text-[#6bff6b] text-sm font-medium">.NET {dotnetStatus.version} Detected</span>
+                                </>
+                            ) : (
+                                <>
+                                    <AlertCircle className="w-4 h-4 text-[#ffcc6b]" />
+                                    <span className="text-[#ffcc6b] text-sm font-medium">
+                                        {dotnetStatus.version === "not installed" ? "No .NET Runtime" : `.NET ${dotnetStatus.version} (requires 9+)`}
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            {dotnetStatus.available
+                                ? "You can use .dll files (DepotDownloaderMod.dll, Steamless.CLI.dll)"
+                                : "Use native Linux binary for DepotDownloaderMod, or Steamless.exe via Wine"}
+                        </p>
+                    </div>
+                )}
                 <div className="space-y-2">
                     <Label htmlFor="depotDownloader">DepotDownloaderMod Path</Label>
                     <div className="flex gap-2">
