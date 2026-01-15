@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
 import { Eye, EyeOff, RefreshCw, AlertCircle, Check, Loader2, Monitor, Wifi, ArrowLeftRight } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { testSshConnection } from "@/lib/api";
 
 import { RelaunchSetupButton } from "@/components/SetupWizard";
@@ -18,10 +18,25 @@ export function SettingsPanel() {
   const { sshConfig, setSshConfig, addLog, setConnectionStatus, connectionMode } = useAppStore();
   const [showPassword, setShowPassword] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [appVersion, setAppVersion] = useState("...");
 
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [connectionSuccess, setConnectionSuccess] = useState(false);
   const [sshpassWarning, setSshpassWarning] = useState<string | null>(null);
+
+  // Load app version on mount
+  useEffect(() => {
+    const loadVersion = async () => {
+      try {
+        const { getVersion } = await import("@tauri-apps/api/app");
+        const version = await getVersion();
+        setAppVersion(version);
+      } catch {
+        setAppVersion("1.3.0");
+      }
+    };
+    loadVersion();
+  }, []);
 
   // Test SSH connection AND save settings
   const handleTestAndSave = async () => {
@@ -244,7 +259,7 @@ export function SettingsPanel() {
 
       {/* Info */}
       <div className="text-sm text-muted-foreground text-center">
-        <p>BoilerRoom v1.0.0</p>
+        <p>BoilerRoom v{appVersion}</p>
       </div>
 
     </div>
