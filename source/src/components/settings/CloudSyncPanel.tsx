@@ -194,7 +194,7 @@ export function CloudSyncPanel() {
             <Label>Cloud Provider</Label>
             <RadioGroup
               value={config.provider || "webdav"}
-              onValueChange={(val) => setConfig({ ...config, provider: val })}
+              onValueChange={(val: string) => setConfig({ ...config, provider: val })}
               className="flex gap-2"
             >
               <div className="flex-1">
@@ -206,7 +206,7 @@ export function CloudSyncPanel() {
                   WebDAV
                 </Label>
               </div>
-              <div>
+              <div className="flex-1">
                 <RadioGroupItem value="gdrive" id="prov-gdrive" className="peer sr-only" />
                 <Label
                   htmlFor="prov-gdrive"
@@ -224,7 +224,7 @@ export function CloudSyncPanel() {
                   Dropbox
                 </Label>
               </div>
-              <div>
+              <div className="flex-1">
                  <RadioGroupItem value="other" id="prov-other" className="peer sr-only" />
                  <Label
                    htmlFor="prov-other"
