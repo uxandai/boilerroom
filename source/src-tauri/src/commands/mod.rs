@@ -5,6 +5,7 @@
 
 pub mod api;
 pub mod cache;
+pub mod cloudsync_commands;
 pub mod connection;
 pub mod depot;
 pub mod depot_keys;
@@ -24,6 +25,7 @@ pub mod update;
 // Re-export all public items for backward compatibility with lib.rs
 pub use api::*;
 pub use cache::*;
+pub use cloudsync_commands::*;
 pub use connection::*;
 pub use depot::*;
 pub use depot_keys::*;

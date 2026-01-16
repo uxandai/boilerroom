@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { RefreshCw, Trash2, FolderOpen, AlertCircle, Loader2, Search, Upload } from "lucide-react";
+import { RefreshCw, Trash2, FolderOpen, AlertCircle, Loader2, Search, Upload, Cloud } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { listInstalledGames, listInstalledGamesLocal, fetchSteamGridDbArtwork, type InstalledGame } from "@/lib/api";
 import { formatSize } from "@/lib/utils";
@@ -294,7 +294,12 @@ export function LibraryPanel() {
                         </div>
                       )}
                       <div>
-                        <p className="font-medium text-white">{game.name}</p>
+                        <p className="font-medium text-white flex items-center gap-2">
+                          {game.name}
+                          {game.has_cloud_saves && (
+                            <Cloud className="w-3.5 h-3.5 text-[#67c1f5]" title="BoilerRoom Cloud Saves Supported" />
+                          )}
+                        </p>
                         <p className="text-xs text-muted-foreground">
                           AppID: {game.app_id} • {formatSize(game.size_bytes)}
                         </p>

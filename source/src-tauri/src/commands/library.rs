@@ -16,6 +16,7 @@ pub struct InstalledGame {
     pub path: String,
     pub size_bytes: u64,
     pub has_depotdownloader_marker: bool,
+    pub has_cloud_saves: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub header_image: Option<String>,
 }
@@ -171,6 +172,7 @@ pub async fn list_installed_games(config: SshConfig) -> Result<Vec<InstalledGame
                 path: game_path,
                 size_bytes,
                 has_depotdownloader_marker,
+                has_cloud_saves: false, // Remote cloud status check not implemented yet
                 header_image: None,
             });
         }
@@ -187,6 +189,7 @@ pub async fn list_installed_games_local() -> Result<Vec<InstalledGame>, String> 
 
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
     let mut games = Vec::new();
+    let steam_user_id = crate::cloudsync::get_steam_user_id();
 
     let primary_steam_path = if cfg!(target_os = "macos") {
         home.join("Library/Application Support/Steam")
@@ -292,11 +295,28 @@ pub async fn list_installed_games_local() -> Result<Vec<InstalledGame>, String> 
                     .unwrap_or_else(|| "unknown".to_string());
 
                 games.push(InstalledGame {
-                    app_id,
+                    app_id: app_id.clone(),
                     name,
                     path: path.to_string_lossy().to_string(),
                     size_bytes,
                     has_depotdownloader_marker,
+                    has_cloud_saves: {
+                         if let Some(uid) = &steam_user_id {
+                             if app_id != "unknown" {
+                                 // Check if remotecache.vdf exists
+                                 let steam_path = if cfg!(target_os = "macos") {
+                                     home.join("Library/Application Support/Steam")
+                                 } else {
+                                     home.join(".local/share/Steam")
+                                 };
+                                 steam_path.join("userdata").join(uid).join(&app_id).join("remotecache.vdf").exists()
+                             } else {
+                                 false
+                             }
+                         } else {
+                             false
+                         }
+                    },
                     header_image: None,
                 });
             }

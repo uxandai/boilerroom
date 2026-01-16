@@ -14,7 +14,9 @@ import {
     AlertDialogFooter,
     AlertDialogHeader,
     AlertDialogTitle,
+    AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
+import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import {
     Loader2,
@@ -24,6 +26,8 @@ import {
     Trophy,
     Wifi,
     Zap,
+    Cloud,
+    RefreshCw,
 } from "lucide-react";
 import {
     fetchSteamGridDbArtwork,
@@ -31,6 +35,9 @@ import {
     cacheArtwork,
     uninstallGame,
     type InstalledGame,
+    type SyncResult,
+    getGameCloudStatus,
+    type GameCloudStatus,
 } from "@/lib/api";
 import { formatSize } from "@/lib/utils";
 import { CopyToRemoteModal } from "@/components/CopyToRemoteModal";
@@ -68,7 +75,10 @@ export function GameCardModal({
     const [isAddingOnlineFix, setIsAddingOnlineFix] = useState(false);
     const [isGeneratingAchievements, setIsGeneratingAchievements] = useState(false);
     const [isApplyingSteamless, setIsApplyingSteamless] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
     const [showCopyModal, setShowCopyModal] = useState(false);
+    const [showSyncConfirm, setShowSyncConfirm] = useState(false);
+    const [cloudStatus, setCloudStatus] = useState<GameCloudStatus | null>(null);
 
     // Achievement result dialog state
     const [achievementResult, setAchievementResult] = useState<{
@@ -85,6 +95,18 @@ export function GameCardModal({
         } else {
             setHeroImage(null);
             setPosterImage(null);
+        }
+    }, [isOpen, game?.app_id]);
+
+    // Fetch artwork and cloud status when game changes
+    useEffect(() => {
+        if (isOpen && game && game.app_id !== "unknown") {
+            fetchArtwork();
+            getGameCloudStatus(game.app_id).then(setCloudStatus).catch(() => setCloudStatus(null));
+        } else {
+            setHeroImage(null);
+            setPosterImage(null);
+            setCloudStatus(null);
         }
     }, [isOpen, game?.app_id]);
 
@@ -258,6 +280,38 @@ export function GameCardModal({
         }
     };
 
+    const handleSyncCloud = () => {
+        setShowSyncConfirm(true);
+    };
+
+    const confirmSync = async () => {
+        if (!game) return;
+        setIsSyncing(true);
+        setShowSyncConfirm(false);
+        try {
+            const result = await invoke<SyncResult>("sync_game_cloud_saves", { appId: game.app_id });
+            
+            // Refresh status after sync
+            getGameCloudStatus(game.app_id).then(setCloudStatus).catch(() => {});
+
+            setAchievementResult({
+                isOpen: true,
+                success: result.success,
+                title: result.success ? "Cloud Sync Complete" : "Cloud Sync Failed",
+                message: result.message,
+            });
+        } catch (e) {
+            setAchievementResult({
+                isOpen: true,
+                success: false,
+                title: "Cloud Sync Failed",
+                message: String(e),
+            });
+        } finally {
+            setIsSyncing(false);
+        }
+    };
+
     if (!game) return null;
 
     return (
@@ -309,8 +363,16 @@ export function GameCardModal({
 
                     {/* Action Buttons */}
                     <div className="p-4 space-y-3">
-                        <DialogHeader className="sr-only">
-                            <DialogTitle>{game.name}</DialogTitle>
+                        <DialogHeader>
+                            <DialogTitle className="text-xl font-bold text-white flex items-center gap-3">
+                                {game.name}
+                                {cloudStatus?.status && cloudStatus.status !== "none" && (
+                                     <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#1b2838] border border-[#2a475e] text-xs font-normal shadow-sm">
+                                         <Cloud className={`w-3 h-3 ${cloudStatus.status === "synced" ? "text-[#5ba32b]" : cloudStatus.status === "conflict" ? "text-red-400" : "text-[#67c1f5]"}`} />
+                                         <span className="text-gray-300 capitalize">{cloudStatus.status}</span>
+                                     </div>
+                                )}
+                            </DialogTitle>
                         </DialogHeader>
 
                         {/* Primary Actions */}
@@ -322,6 +384,20 @@ export function GameCardModal({
                             >
                                 <Search className="w-4 h-4 mr-2" />
                                 Find Update
+                            </Button>
+
+                            <Button
+                                onClick={handleSyncCloud}
+                                disabled={isSyncing}
+                                variant="outline"
+                                className="border-[#2a475e] text-[#67c1f5] hover:bg-[#2a475e]/50"
+                            >
+                                {isSyncing ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Cloud className="w-4 h-4 mr-2" />
+                                )}
+                                Sync Cloud Saves
                             </Button>
 
                             {connectionMode === "local" && (
@@ -410,6 +486,24 @@ export function GameCardModal({
                 onClose={() => setShowCopyModal(false)}
                 game={game}
             />
+
+            {/* Sync Confirmation Dialog */}
+            <AlertDialog open={showSyncConfirm} onOpenChange={setShowSyncConfirm}>
+                <AlertDialogContent className="bg-[#1b2838] border-[#2a475e]">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle className="text-white">Sync Cloud Saves?</AlertDialogTitle>
+                        <AlertDialogDescription className="text-gray-300">
+                           This will sync your local saves with the cloud.
+                           {cloudStatus?.status === 'conflict' && "\n\nWARNING: Cloud conflict detected. Newer files will overwrite older ones."}
+                           {cloudStatus?.status === 'synced' && "\n\nYour saves are already synced."}
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel className="bg-transparent text-gray-300 border-gray-600 hover:bg-gray-800">Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmSync} className="btn-steam">Sync Now</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             {/* Achievement Result Dialog */}
             <AlertDialog
