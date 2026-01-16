@@ -13,6 +13,10 @@ use crate::cloudsync_watcher::CloudSyncWatcherState;
 use std::path::PathBuf;
 use tauri::Manager;
 use tauri_plugin_store::StoreExt;
+use walkdir::WalkDir;
+use crate::pcgamingwiki;
+use crate::cloudsync::{get_steam_user_id, CloudFile};
+use std::collections::HashMap;
 
 // ============================================================================
 // Configuration Commands
@@ -91,6 +95,7 @@ pub async fn get_game_cloud_status(
                 last_sync: None,
                 pending_files: None,
                 error_message: None,
+                source: "none".to_string(),
             });
         }
     };
@@ -120,12 +125,58 @@ pub async fn get_game_cloud_status(
     let remotecache_path = match remotecache_path {
         Some(p) => p,
         None => {
+            // Attempt PCGamingWiki fallback
+            let steam_id = get_steam_user_id();
+            let save_roots = pcgamingwiki::find_save_locations(&app_id, steam_id.as_deref())
+                .await
+                .ok();
+
+            if let Some(roots) = save_roots {
+                if !roots.is_empty() {
+                    let mut local_count = 0;
+                    
+                    // Count files in these roots
+                    for root in roots {
+                        if root.exists() {
+                             local_count += WalkDir::new(root)
+                                .into_iter()
+                                .filter_map(|e| e.ok())
+                                .filter(|e| e.file_type().is_file())
+                                .count();
+                        }
+                    }
+
+                    // Check remote status
+                    let client = WebDavClient::new(&config)?;
+                    let remote_files = client.list_files(&app_id).await.unwrap_or_default();
+                    let remote_count = remote_files.len();
+
+                    let status = if remote_count == 0 && local_count > 0 {
+                        CloudStatus::Pending
+                    } else if remote_count == local_count {
+                        CloudStatus::Synced
+                    } else {
+                        CloudStatus::Pending
+                    };
+
+                   return Ok(GameCloudStatus {
+                        app_id,
+                        status,
+                        last_sync: None,
+                        pending_files: Some((local_count.abs_diff(remote_count)) as u32),
+                        error_message: None, 
+                        source: "pcgamingwiki".to_string(),
+                    });
+                }
+            }
+
             return Ok(GameCloudStatus {
                 app_id,
                 status: CloudStatus::None,
                 last_sync: None,
                 pending_files: None,
-                error_message: Some("No cloud save data found for this game".to_string()),
+                error_message: Some("No cloud save data found (checked Steam & PCGamingWiki)".to_string()),
+                source: "none".to_string(),
             });
         }
     };
@@ -168,6 +219,7 @@ pub async fn get_game_cloud_status(
         last_sync: None, // TODO: Track last sync time
         pending_files: Some((local_count.abs_diff(remote_count)) as u32),
         error_message: None,
+        source: "steam_cloud".to_string(),
     })
 }
 
@@ -240,26 +292,84 @@ pub async fn sync_game_cloud_saves(
         }
     }
 
-    let remotecache_path = match remotecache_path {
-        Some(p) => p,
+    let (files, is_fallback) = match remotecache_path {
+        Some(p) => {
+            let content = std::fs::read_to_string(&p)
+                .map_err(|e| format!("Failed to read remotecache.vdf: {}", e))?;
+             (parse_remotecache_vdf(&content)?, false)
+        },
         None => {
-            return Ok(SyncResult {
-                success: false,
-                message: "No cloud save data found for this game".to_string(),
-                files_uploaded: 0,
-                files_downloaded: 0,
-                conflicts: vec![],
-            });
+            // PCGamingWiki Fallback
+            let mut found_files = HashMap::new();
+            let steam_id = get_steam_user_id();
+            
+            // Update the outer user_id option if we found one
+            if let Some(ref sid) = steam_id {
+                user_id = Some(sid.clone());
+            }
+
+            let save_roots = pcgamingwiki::find_save_locations(&app_id, steam_id.as_deref())
+                .await
+                .map_err(|e| format!("PCGamingWiki lookup failed: {}", e))?;
+
+            if save_roots.is_empty() {
+                 return Ok(SyncResult {
+                    success: false,
+                    message: "No cloud save data found via PCGamingWiki".to_string(),
+                    files_uploaded: 0,
+                    files_downloaded: 0,
+                    conflicts: vec![],
+                });
+            }
+
+            for root in save_roots {
+                if root.exists() {
+                    for entry in WalkDir::new(&root).into_iter().filter_map(|e| e.ok()) {
+                        if entry.file_type().is_file() {
+                             let path = entry.path();
+                             // Create relative path from root
+                             if let Ok(rel_path) = path.strip_prefix(&root) {
+                                let rel_path_str = rel_path.to_string_lossy().replace('\\', "/");
+                                
+                                let metadata = std::fs::metadata(path).ok();
+                                let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+                                let time = metadata.as_ref()
+                                    .and_then(|m| m.modified().ok())
+                                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                                    .map(|d| d.as_secs())
+                                    .unwrap_or(0);
+
+                                found_files.insert(rel_path_str.clone(), CloudFile {
+                                    path: rel_path_str,
+                                    root: -1, // Custom/Absolute
+                                    size,
+                                    localtime: time,
+                                    remotetime: 0,
+                                    sha: String::new(),
+                                    syncstate: 0,
+                                    resolved_path: Some(path.to_path_buf()),
+                                });
+                             }
+                        }
+                    }
+                }
+            }
+             
+            if found_files.is_empty() {
+                 return Ok(SyncResult {
+                    success: false,
+                    message: "PCGamingWiki path found but no files exist".to_string(),
+                    files_uploaded: 0,
+                    files_downloaded: 0,
+                    conflicts: vec![],
+                });
+            }
+            
+            (found_files, true)
         }
     };
 
     let user_id = user_id.unwrap_or_default();
-
-    // Parse remotecache.vdf
-    let content = std::fs::read_to_string(&remotecache_path)
-        .map_err(|e| format!("Failed to read remotecache.vdf: {}", e))?;
-
-    let files = parse_remotecache_vdf(&content)?;
 
     if files.is_empty() {
         return Ok(SyncResult {
@@ -279,14 +389,19 @@ pub async fn sync_game_cloud_saves(
     // Process each file
     for (file_path, cloud_file) in &files {
         // Resolve local path
-        let local_path = match resolve_cloud_file_path(&cloud_file, &app_id, &user_id, None) {
-            Some(p) => p,
-            None => {
-                eprintln!(
-                    "[CloudSync] Could not resolve path for {}: root={}",
-                    file_path, cloud_file.root
-                );
-                continue;
+        // Resolve local path
+        let local_path = if is_fallback {
+             cloud_file.resolved_path.clone().unwrap() // Fallback always has resolved_path
+        } else {
+             match resolve_cloud_file_path(&cloud_file, &app_id, &user_id, None) {
+                Some(p) => p,
+                None => {
+                    eprintln!(
+                        "[CloudSync] Could not resolve path for {}: root={}",
+                        file_path, cloud_file.root
+                    );
+                    continue;
+                }
             }
         };
 

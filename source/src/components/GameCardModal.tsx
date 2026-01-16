@@ -369,7 +369,12 @@ export function GameCardModal({
                                 {cloudStatus?.status && cloudStatus.status !== "none" && (
                                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-[#1b2838] border border-[#2a475e] text-xs font-normal shadow-sm">
                                          <Cloud className={`w-3 h-3 ${cloudStatus.status === "synced" ? "text-[#5ba32b]" : cloudStatus.status === "conflict" ? "text-red-400" : "text-[#67c1f5]"}`} />
-                                         <span className="text-gray-300 capitalize">{cloudStatus.status}</span>
+                                         <span className="text-gray-300 capitalize flex items-center gap-1">
+                                             {cloudStatus.status}
+                                             {cloudStatus.source === 'pcgamingwiki' && (
+                                                 <span className="text-[10px] text-gray-400 font-mono bg-black/20 px-1 rounded" title="Save location sourced from PCGamingWiki">(PCGW)</span>
+                                             )}
+                                         </span>
                                      </div>
                                 )}
                             </DialogTitle>

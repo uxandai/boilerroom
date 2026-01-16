@@ -6,6 +6,7 @@ mod config_vdf;
 mod install_manager;
 mod steam_cm;
 mod steamless;
+mod pcgamingwiki;
 
 use commands::*;
 use install_manager::InstallManager;

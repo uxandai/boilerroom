@@ -53,6 +53,12 @@ pub struct GameCloudStatus {
     pub pending_files: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
+    #[serde(default = "default_source")]
+    pub source: String, // "steam_cloud", "pcgamingwiki", "none"
+}
+
+fn default_source() -> String {
+    "none".to_string()
 }
 
 /// Global cloud sync status

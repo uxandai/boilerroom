@@ -14,6 +14,7 @@ export interface GameCloudStatus {
     last_sync?: string | null;
     pending_files?: number | null;
     error_message?: string | null;
+    source: "steam_cloud" | "pcgamingwiki" | "none";
 }
 
 export interface GlobalCloudStatus {
