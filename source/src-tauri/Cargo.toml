@@ -42,3 +42,4 @@ keyvalues-serde = "0.2"  # Type-safe VDF (de)serialization
 keyvalues-parser = "0.2" # Low-level VDF parsing
 steam-vent = "0.4"       # Steam CM protocol client
 steam-vent-proto = "0.5" # Steam protocol message definitions
+log = "0.4.29"

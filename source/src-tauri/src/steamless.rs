@@ -521,71 +521,75 @@ where
         return Ok(false);
     }
 
-    // Find largest exe in game directory first
-    progress_callback("Finding main game executable...");
-    let exe_path = find_largest_exe(game_directory)?;
-
-    eprintln!("[Steamless] Found largest exe: {:?}", exe_path);
-    progress_callback(&format!(
-        "Processing: {}",
-        exe_path.file_name().unwrap_or_default().to_string_lossy()
-    ));
-
-    // Check if we have the .NET Core version (DLL) - run natively with dotnet
-    let is_dotnet_dll = steamless_cli_path
-        .extension()
-        .map(|e| e.to_ascii_lowercase() == "dll")
-        .unwrap_or(false);
-
-    if is_dotnet_dll {
-        // Native .NET Core execution - no Wine needed!
-        progress_callback("Using native .NET Core Steamless...");
-        return run_steamless_dotnet(steamless_cli_path, &exe_path, progress_callback);
-    }
-
-    // On Windows, run .exe natively without Wine
-    #[cfg(target_os = "windows")]
+    // Non-macOS implementation
+    #[cfg(not(target_os = "macos"))]
     {
-        return run_steamless_windows(game_directory, steamless_cli_path, progress_callback);
-    }
+        // Find largest exe in game directory first
+        progress_callback("Finding main game executable...");
+        let exe_path = find_largest_exe(game_directory)?;
 
-    // Linux/SteamOS with .exe - use Wine/Proton (legacy path)
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        progress_callback("Searching for Proton/Wine installation...");
+        eprintln!("[Steamless] Found largest exe: {:?}", exe_path);
+        progress_callback(&format!(
+            "Processing: {}",
+            exe_path.file_name().unwrap_or_default().to_string_lossy()
+        ));
 
-        let installations = find_wine_installations();
-        if installations.is_empty() {
-            return Err("No Proton or Wine installation found. Please install Steam with Proton, or install Wine.\nAlternatively, use the .NET Core version (Steamless.CLI.dll) which doesn't require Wine.".to_string());
+        // Check if we have the .NET Core version (DLL) - run natively with dotnet
+        let is_dotnet_dll = steamless_cli_path
+            .extension()
+            .map(|e| e.to_ascii_lowercase() == "dll")
+            .unwrap_or(false);
+
+        if is_dotnet_dll {
+            // Native .NET Core execution - no Wine needed!
+            progress_callback("Using native .NET Core Steamless...");
+            return run_steamless_dotnet(steamless_cli_path, &exe_path, progress_callback);
         }
 
-        let wine = &installations[0];
-        progress_callback(&format!("Using: {}", wine.name));
-        eprintln!(
-            "[Steamless] Selected Wine: {} at {:?}",
-            wine.name, wine.wine_path
-        );
-
-        // Get or create prefix
-        let prefix = get_steamless_prefix();
-        eprintln!("[Steamless] Using prefix: {:?}", prefix);
-
-        // Check and install .NET if needed
-        if !check_dotnet_installed(wine, &prefix) {
-            progress_callback(".NET Framework 4.8 not found, installing...");
-            install_dotnet(wine, &prefix, progress_callback.clone())?;
-        } else {
-            progress_callback(".NET Framework 4.8 is installed");
+        // On Windows, run .exe natively without Wine
+        #[cfg(target_os = "windows")]
+        {
+            return run_steamless_windows(game_directory, steamless_cli_path, progress_callback);
         }
 
-        // Run Steamless via Wine
-        run_steamless(
-            wine,
-            &prefix,
-            steamless_cli_path,
-            &exe_path,
-            progress_callback,
-        )
+        // Linux/SteamOS with .exe - use Wine/Proton (legacy path)
+        #[cfg(not(target_os = "windows"))]
+        {
+            progress_callback("Searching for Proton/Wine installation...");
+
+            let installations = find_wine_installations();
+            if installations.is_empty() {
+                return Err("No Proton or Wine installation found. Please install Steam with Proton, or install Wine.\nAlternatively, use the .NET Core version (Steamless.CLI.dll) which doesn't require Wine.".to_string());
+            }
+
+            let wine = &installations[0];
+            progress_callback(&format!("Using: {}", wine.name));
+            eprintln!(
+                "[Steamless] Selected Wine: {} at {:?}",
+                wine.name, wine.wine_path
+            );
+
+            // Get or create prefix
+            let prefix = get_steamless_prefix();
+            eprintln!("[Steamless] Using prefix: {:?}", prefix);
+
+            // Check and install .NET if needed
+            if !check_dotnet_installed(wine, &prefix) {
+                progress_callback(".NET Framework 4.8 not found, installing...");
+                install_dotnet(wine, &prefix, progress_callback.clone())?;
+            } else {
+                progress_callback(".NET Framework 4.8 is installed");
+            }
+
+            // Run Steamless via Wine
+            run_steamless(
+                wine,
+                &prefix,
+                steamless_cli_path,
+                &exe_path,
+                progress_callback,
+            )
+        }
     }
 }
 

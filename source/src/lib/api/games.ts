@@ -13,6 +13,7 @@ export interface InstalledGame {
     path: string;
     size_bytes: number;
     has_depotdownloader_marker: boolean; // true if installed by BoilerRoom/ACCELA
+    has_cloud_saves?: boolean; // true if remotecache.vdf exists (BoilerRoom cloud compatible)
     header_image?: string;
 }
 

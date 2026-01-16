@@ -13,6 +13,7 @@ import { StatusDashboard } from "@/components/settings/StatusDashboard";
 import { ApiKeysPanel } from "@/components/settings/ApiKeysPanel";
 import { SystemHealthPanel } from "@/components/settings/SystemHealthPanel";
 import { ToolPathsPanel } from "@/components/settings/ToolPathsPanel";
+import { CloudSyncPanel } from "@/components/settings/CloudSyncPanel";
 
 export function SettingsPanel() {
   const { sshConfig, setSshConfig, addLog, setConnectionStatus, connectionMode } = useAppStore();
@@ -264,6 +265,9 @@ export function SettingsPanel() {
 
       {/* System Health - Consolidated Panel */}
       <SystemHealthPanel />
+
+      {/* CloudSync - WebDAV cloud saves (Local mode only) */}
+      <CloudSyncPanel />
 
       {/* Tool Paths */}
       <ToolPathsPanel />

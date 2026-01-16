@@ -1,9 +1,12 @@
 mod achievements;
+mod cloudsync;
+mod cloudsync_watcher;
 mod commands;
 mod config_vdf;
 mod install_manager;
 mod steam_cm;
 mod steamless;
+mod pcgamingwiki;
 
 use commands::*;
 use install_manager::InstallManager;
@@ -64,6 +67,7 @@ pub fn run() {
 
             let handle = app.handle().clone();
             app.manage(InstallManager::new(handle));
+            app.manage(crate::cloudsync_watcher::CloudSyncWatcherState::default());
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
@@ -167,6 +171,16 @@ pub fn run() {
             get_manifest_cache_info,
             // Update check command
             check_for_update,
+            // CloudSync commands
+            save_cloudsync_config,
+            get_cloudsync_config,
+            test_cloudsync_connection,
+            get_game_cloud_status,
+            get_global_cloud_status,
+            sync_game_cloud_saves,
+            start_cloud_watcher,
+            stop_cloud_watcher,
+            is_cloud_watcher_running,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
